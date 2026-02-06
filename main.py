@@ -1,36 +1,46 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 
 from openai import OpenAI
 
-# --------------------
+# =========================
 # APP INIT
-# --------------------
-app = FastAPI(title="HKE Leads & AI Trip Planner")
+# =========================
+app = FastAPI(
+    title="HKE Backend – AI Trip Planner & Leads",
+    version="1.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # you can restrict later
+    allow_origins=["*"],  # restrict later to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# =========================
+# OPENAI CLIENT
+# =========================
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# --------------------
-# HEALTH
-# --------------------
+# =========================
+# ROOT + HEALTH (IMPORTANT)
+# =========================
+@app.get("/")
+def root():
+    return {"ok": True, "service": "HKE Backend Running"}
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "HKE FastAPI backend"}
+    return {"ok": True}
 
-# --------------------
-# EXISTING LEADS API (KEEP)
-# --------------------
+# =========================
+# GOOGLE SHEETS LEADS (KEEP)
+# =========================
 class LeadIn(BaseModel):
     source: str
     name: str
@@ -49,14 +59,13 @@ class LeadIn(BaseModel):
 
 @app.post("/api/leads")
 def create_lead(lead: LeadIn):
-    # Your existing google_sheets logic stays here
     from google_sheets import insert_lead
     insert_lead(lead.dict())
     return {"status": "saved"}
 
-# --------------------
-# AI PLAN REQUEST
-# --------------------
+# =========================
+# AI ITINERARY REQUEST
+# =========================
 class AIPlanRequest(BaseModel):
     destination: str
     days: int
@@ -67,8 +76,11 @@ class AIPlanRequest(BaseModel):
     interests: List[str] = []
 
 class AIPlanResponse(BaseModel):
-    itinerary_text: str
+    itinerary: str
 
+# =========================
+# AI GENERATE (MAIN LOGIC)
+# =========================
 @app.post("/api/ai/plan", response_model=AIPlanResponse)
 def generate_itinerary(req: AIPlanRequest):
     prompt = f"""
@@ -82,19 +94,18 @@ Start Date: {req.startDate}
 Travellers: {req.travellers}
 Hotel Class: {req.hotelClass}
 Budget: {req.budget}
-Important places to include: {', '.join(req.interests)}
+Important places to include: {", ".join(req.interests)}
 
-Format STRICTLY like:
-
+STRICT FORMAT:
 Day 1 – ...
 Day 2 – ...
 
-Then add:
+Add sections:
 PACKAGE INCLUDES:
 PACKAGE EXCLUDES:
 
+Keep it realistic, sellable, and clear.
 Use emojis sparingly.
-Make it realistic and sellable.
 """
 
     try:
@@ -104,21 +115,30 @@ Make it realistic and sellable.
             max_output_tokens=1200,
         )
 
-        text = response.output_text
-        return {"itinerary_text": text}
+        return {"itinerary": response.output_text}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --------------------
-# AI CHAT (MODIFY ITINERARY)
-# --------------------
+# ==================================================
+# 🔁 FRONTEND COMPATIBILITY (THIS FIXES YOUR ISSUE)
+# ==================================================
+@app.post("/api/ai/itinerary", response_model=AIPlanResponse)
+def generate_itinerary_alias(req: AIPlanRequest):
+    """
+    Alias endpoint for frontend ai-planner.js
+    """
+    return generate_itinerary(req)
+
+# =========================
+# AI CHAT – MODIFY ITINERARY
+# =========================
 class AIChatRequest(BaseModel):
     current_itinerary: str
     user_message: str
 
 class AIChatResponse(BaseModel):
-    updated_itinerary: str
+    itinerary: str
 
 @app.post("/api/ai/chat", response_model=AIChatResponse)
 def chat_modify_itinerary(req: AIChatRequest):
@@ -131,7 +151,8 @@ CURRENT ITINERARY:
 USER REQUEST:
 {req.user_message}
 
-Return the FULL UPDATED itinerary in same WhatsApp format.
+Return the FULL UPDATED itinerary
+in the SAME WhatsApp-friendly format.
 """
 
     try:
@@ -141,7 +162,30 @@ Return the FULL UPDATED itinerary in same WhatsApp format.
             max_output_tokens=1200,
         )
 
-        return {"updated_itinerary": response.output_text}
+        return {"itinerary": response.output_text}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# =========================
+# FINALIZE (FUTURE USE)
+# =========================
+class FinalizeRequest(BaseModel):
+    itinerary: str
+    context: Dict[str, Any]
+
+@app.post("/api/ai/finalize")
+def finalize_itinerary(req: FinalizeRequest):
+    """
+    Future:
+    - Save to Google Sheet
+    - Send Email
+    - Generate WhatsApp message
+    """
+    return {
+        "ok": True,
+        "message": "Itinerary finalized",
+        "whatsapp_customer": "✅ Your itinerary is finalized. Thank you for choosing Himalayan Kerala Expeditions!",
+        "email_subject": "Your Finalized HKE Itinerary",
+        "email_body": req.itinerary
+    }
