@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union
 import os
 
 from openai import OpenAI
@@ -9,14 +9,11 @@ from openai import OpenAI
 # =========================
 # APP INIT
 # =========================
-app = FastAPI(
-    title="HKE Backend – AI Trip Planner & Leads",
-    version="1.1.0"
-)
+app = FastAPI(title="HKE Backend – AI Trip Planner & Leads", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # restrict later to your domain
+    allow_origins=["*"],  # later restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,25 +25,21 @@ app.add_middleware(
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =========================
-# ROOT + HEALTH (Render pings HEAD /)
+# ROOT + HEALTH
 # =========================
 @app.get("/")
 def root():
     return {"ok": True, "service": "HKE Backend Running"}
-
-@app.head("/")
-def root_head():
-    return
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
 # =========================
-# GOOGLE SHEETS LEADS (KEEP)
+# LEADS (KEEP)
 # =========================
 class LeadIn(BaseModel):
-    source: str
+    source: str = "website"
     name: str
     email: str
     phone: str
@@ -63,202 +56,183 @@ class LeadIn(BaseModel):
 
 @app.post("/api/leads")
 def create_lead(lead: LeadIn):
-    # your existing google sheet logic stays here
-    from google_sheets import insert_lead
-    insert_lead(lead.dict())
-    return {"status": "saved"}
+    try:
+        from google_sheets import insert_lead
+        insert_lead(lead.dict())
+        return {"status": "saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lead save failed: {str(e)}")
 
 # =========================
-# AI ITINERARY REQUEST
-# (Matches your frontend payload)
+# AI REQUEST (ACCEPT FRONTEND FIELDS)
 # =========================
 class AIPlanRequest(BaseModel):
-    # customer
-    name: Optional[str] = ""
-    email: Optional[str] = ""
-    phone: Optional[str] = ""
-
-    # trip
+    # required for itinerary
     destination: str
-    tourStartPoint: Optional[str] = ""
-    tourEndPoint: Optional[str] = ""
-
-    startDate: str
-    endDate: Optional[str] = ""
     days: int
-
+    startDate: str
     travellers: int = 2
-    rooms: Optional[int] = 1
-
     hotelClass: str = "Standard"
-    guide: Optional[str] = "Without Guide"
-    vehicle: Optional[str] = "SUV"
+    vehicle: str = "SUV"
+    guide: str = "Without Guide"
 
-    # places
-    places: Optional[str] = ""                 # frontend sends comma-separated string
-    interests: Optional[List[str]] = []        # keep for future list use
+    # new fields (you wanted)
+    startPoint: Optional[str] = ""
+    endPoint: Optional[str] = ""
+    notes: Optional[str] = ""
 
-    # extra
+    # places can come as array OR comma string
+    interests: Union[List[str], str, None] = Field(default_factory=list)
+
+    # optional
     budget: Optional[str] = "standard"
-    customerNotes: Optional[str] = ""
 
 class AIPlanResponse(BaseModel):
     itinerary: str
 
-# =========================
-# AI GENERATE (MAIN LOGIC)
-# =========================
-@app.post("/api/ai/plan", response_model=AIPlanResponse)
-def generate_itinerary(req: AIPlanRequest):
-    places_text = (req.places or "").strip()
-    if not places_text and req.interests:
-        places_text = ", ".join([x for x in req.interests if x])
+def _normalize_places(interests: Union[List[str], str, None]) -> List[str]:
+    if interests is None:
+        return []
+    if isinstance(interests, list):
+        return [str(x).strip() for x in interests if str(x).strip()]
+    if isinstance(interests, str):
+        # supports "Manali, Solang, Kasol"
+        return [x.strip() for x in interests.split(",") if x.strip()]
+    return []
 
-    prompt = f"""
+def _build_prompt(req: AIPlanRequest) -> str:
+    places = _normalize_places(req.interests)
+    places_text = ", ".join(places) if places else "Best highlights as per destination"
+
+    sp = (req.startPoint or "").strip()
+    ep = (req.endPoint or "").strip()
+
+    route_line = ""
+    if sp and ep:
+        route_line = f"Trip Route: Start from {sp} and end at {ep}."
+    elif sp:
+        route_line = f"Trip Start Point: {sp}."
+    elif ep:
+        route_line = f"Trip End Point: {ep}."
+
+    notes = (req.notes or "").strip()
+    notes_line = f"Customer Notes: {notes}" if notes else ""
+
+    return f"""
 You are a professional travel planner for Himalayan Kerala Expeditions (India).
 
 Create a detailed DAY-WISE itinerary in WhatsApp-friendly format.
-Keep it realistic with practical drive times, check-in/out, meals and rest.
-
-Customer: {req.name} | Phone: {req.phone} | Email: {req.email}
 
 Destination: {req.destination}
-Tour Start Point: {req.tourStartPoint}
-Tour End Point: {req.tourEndPoint}
 Days: {req.days}
 Start Date: {req.startDate}
-End Date: {req.endDate}
 Travellers: {req.travellers}
-Rooms: {req.rooms}
-Hotel Class: {req.hotelClass}
-Guide: {req.guide}
+Hotel Category: {req.hotelClass}
 Vehicle: {req.vehicle}
+Guide: {req.guide}
 Budget: {req.budget}
-Important places to include: {places_text}
-
-Customer notes (must follow if relevant):
-{req.customerNotes}
+{route_line}
+Must-include places: {places_text}
+{notes_line}
 
 STRICT FORMAT:
 Day 1 – ...
-• Morning: ...
-• Afternoon: ...
-• Evening: ...
-• Stay: (area)
-
 Day 2 – ...
 ...
+(cover all days)
 
-Then add:
+After day-wise plan add:
 PACKAGE INCLUDES:
-- ...
 PACKAGE EXCLUDES:
-- ...
 
-Use emojis sparingly (max 1–2 per day).
-Do NOT add price unless customer asked.
-"""
+Rules:
+- Keep it realistic and sellable
+- No breakfast/lunch/dinner included by default (mention meals are on demand if needed)
+- Use emojis sparingly
+""".strip()
+
+# =========================
+# AI GENERATE (MAIN)
+# =========================
+@app.post("/api/ai/plan", response_model=AIPlanResponse)
+def generate_itinerary(req: AIPlanRequest):
+    prompt = _build_prompt(req)
 
     try:
-        response = client.responses.create(
+        resp = client.responses.create(
             model="gpt-4.1-mini",
-            input=prompt,
-            max_output_tokens=1400,
+            input=prompt,              # MUST be a string
+            max_output_tokens=1200,
         )
-        text = response.output_text.strip()
-        if not text or len(text) < 20:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary.")
+        text = (resp.output_text or "").strip()
+        if not text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary")
         return {"itinerary": text}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"AI generate failed: {str(e)}")
 
-# ==================================================
-# 🔁 FRONTEND COMPATIBILITY (YOUR WEBSITE EXPECTS THIS)
-# ==================================================
+# ✅ Alias for your frontend
 @app.post("/api/ai/itinerary", response_model=AIPlanResponse)
 def generate_itinerary_alias(req: AIPlanRequest):
     return generate_itinerary(req)
 
 # =========================
-# AI CHAT – MODIFY ITINERARY
-# (Supports BOTH payload styles)
+# AI CHAT (EDIT ITINERARY)
 # =========================
 class AIChatRequest(BaseModel):
-    # old style
-    current_itinerary: Optional[str] = ""
-    user_message: Optional[str] = ""
-
-    # new style (some versions of your ai-planner.js)
-    itinerary: Optional[str] = ""
-    message: Optional[str] = ""
-    context: Optional[Dict[str, Any]] = None
+    current_itinerary: str
+    user_message: str
 
 class AIChatResponse(BaseModel):
     itinerary: str
 
 @app.post("/api/ai/chat", response_model=AIChatResponse)
 def chat_modify_itinerary(req: AIChatRequest):
-    current = (req.current_itinerary or req.itinerary or "").strip()
-    user_msg = (req.user_message or req.message or "").strip()
-
-    if not current:
-        raise HTTPException(status_code=400, detail="Missing current itinerary.")
-    if not user_msg:
-        raise HTTPException(status_code=400, detail="Missing user message.")
-
-    ctx = req.context or {}
-    ctx_text = "\n".join([f"{k}: {v}" for k, v in ctx.items()]) if ctx else ""
-
     prompt = f"""
-You are modifying an existing travel itinerary for Himalayan Kerala Expeditions.
-
-CONTEXT (if any):
-{ctx_text}
+You are modifying an existing travel itinerary.
 
 CURRENT ITINERARY:
-{current}
+{req.current_itinerary}
 
 USER REQUEST:
-{user_msg}
+{req.user_message}
 
-Return the FULL UPDATED itinerary in the SAME WhatsApp-friendly format.
-Do NOT add pricing unless asked.
-"""
+Return the FULL UPDATED itinerary
+in the SAME WhatsApp-friendly format.
+""".strip()
 
     try:
-        response = client.responses.create(
+        resp = client.responses.create(
             model="gpt-4.1-mini",
             input=prompt,
-            max_output_tokens=1400,
+            max_output_tokens=1200,
         )
-        text = response.output_text.strip()
-        if not text or len(text) < 20:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty update.")
+        text = (resp.output_text or "").strip()
+        if not text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary")
         return {"itinerary": text}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"AI chat failed: {str(e)}")
 
 # =========================
-# FINALIZE (STUB FOR NEXT STEP)
+# FINALIZE (RECEIVE ANYTHING)
 # =========================
 class FinalizeRequest(BaseModel):
     itinerary: str
-    context: Dict[str, Any]
+    context: Dict[str, Any] = Field(default_factory=dict)
 
 @app.post("/api/ai/finalize")
 def finalize_itinerary(req: FinalizeRequest):
-    """
-    Next step:
-    - Save to Google Sheet
-    - Send Email
-    - Generate WhatsApp message content
-    """
+    # For now just acknowledge (frontend expects 200 OK)
     return {
         "ok": True,
-        "message": "Itinerary finalized (stub). Next: Google Sheet + Email + WhatsApp automation.",
-        "whatsapp_customer": "✅ Your itinerary is finalized. Thank you for choosing Himalayan Kerala Expeditions!",
-        "email_subject": "Your Finalized HKE Itinerary",
-        "email_body": req.itinerary
+        "message": "Finalized (stored in browser for next page).",
+        "itinerary": req.itinerary,
+        "context": req.context,
     }
