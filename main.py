@@ -236,3 +236,58 @@ def finalize_itinerary(req: FinalizeRequest):
         "itinerary": req.itinerary,
         "context": req.context,
     }
+
+# =========================
+# ✅ CUSTOMER CARE CHATBOT (NEW)
+# Support-only. NOT itinerary/booking sales.
+# =========================
+class SupportChatRequest(BaseModel):
+    message: str
+
+class SupportChatResponse(BaseModel):
+    reply: str
+
+@app.post("/api/support/chat", response_model=SupportChatResponse)
+def customer_care_chat(req: SupportChatRequest):
+    msg = (req.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    instructions = """
+You are the CUSTOMER CARE assistant for Himalayan Kerala Expeditions (HKE).
+This chatbot is ONLY for customer support issues:
+- payment issues (UPI/QR/transaction pending/failed)
+- booking status / confirmation
+- cancellation / reschedule process
+- refund timelines
+- pickup timing / coordination questions
+- general assistance
+- connect to human agent
+
+STRICT RULES:
+- DO NOT create itineraries and DO NOT sell packages here.
+- If user asks for itinerary/package/plan, reply: "Please use Plan with AI page for itinerary."
+- Be concise and helpful.
+- Ask at most ONE follow-up question if required (name/phone/date/UTR).
+- If user asks "talk to agent" / "human", immediately give contact details.
+
+HKE Contact:
+WhatsApp: +91 97972 94747
+Phone: +91 97972 94747
+Email: himalayankeralaexpeditions@gmail.com
+""".strip()
+
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            instructions=instructions,
+            input=msg,
+            max_output_tokens=250,
+        )
+        reply = (resp.output_text or "").strip()
+        if not reply:
+            reply = "Please share your issue in 1 line. For urgent help WhatsApp: +91 97972 94747"
+        return {"reply": reply}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Support chat failed: {str(e)}")
