@@ -1,544 +1,341 @@
+import os
+import hmac
+import hashlib
+from typing import Optional, List, Dict, Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union
-import os
-import json
-import requests
-import hmac
-import hashlib
 
 from openai import OpenAI
+import razorpay
+
 
 # =========================
 # APP INIT
 # =========================
-app = FastAPI(title="HKE Backend – AI Trip Planner & Leads", version="2.2.0")
+app = FastAPI(
+    title="HKE Backend – AI Trip Planner & Payments",
+    version="3.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later restrict to your domain
+    allow_origins=["*"],  # later you can restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# =========================
-# OPENAI CLIENT
-# =========================
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =========================
-# RAZORPAY ENV
+# ENV
 # =========================
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY not found in environment.")
+if not RAZORPAY_KEY_ID:
+    print("WARNING: RAZORPAY_KEY_ID not found in environment.")
+if not RAZORPAY_KEY_SECRET:
+    print("WARNING: RAZORPAY_KEY_SECRET not found in environment.")
+
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+razorpay_client = None
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+
+# =========================
+# MODELS
+# =========================
+class LeadIn(BaseModel):
+    source: str = "website"
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+    message: str = ""
+
+
+class ItineraryIn(BaseModel):
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+    destination: str = ""
+    startDate: str = ""
+    endDate: str = ""
+    days: str = "1"
+    travellers: str = "2"
+    rooms: str = "1"
+    hotelClass: str = "Standard"
+    guide: str = "Without Guide"
+    vehicle: str = "SUV"
+    places: str = ""
+
+
+class ChatUpdateIn(BaseModel):
+    message: str
+    itinerary: str
+    context: Dict[str, Any] = {}
+
+
+class CreateOrderIn(BaseModel):
+    amount: int = Field(..., gt=0, description="Amount in paise")
+    currency: str = "INR"
+    receipt: str = Field(..., min_length=3)
+    notes: Optional[Dict[str, str]] = None
+
+
+class VerifyPaymentIn(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+# =========================
+# HELPERS
+# =========================
+def safe_int(value: Any, default: int = 1) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
+def build_itinerary_prompt(data: ItineraryIn) -> str:
+    return f"""
+Create a practical travel itinerary for Himalayan Kerala Expeditions.
+
+Customer Details:
+- Name: {data.name}
+- Email: {data.email}
+- Phone: {data.phone}
+
+Trip Details:
+- Destination: {data.destination}
+- Start Date: {data.startDate}
+- End Date: {data.endDate}
+- Number of Days: {data.days}
+- Travellers: {data.travellers}
+- Rooms: {data.rooms}
+- Hotel Category: {data.hotelClass}
+- Guide Requirement: {data.guide}
+- Vehicle Type: {data.vehicle}
+- Tourist Places: {data.places}
+
+Instructions:
+1. Write a professional, customer-facing itinerary.
+2. Give a trip title at the top.
+3. Add a short overview.
+4. Create day-wise plan clearly from Day 1 onward.
+5. Keep it practical and realistic.
+6. Mention travel flow naturally.
+7. Keep wording simple and premium.
+8. Do not add fake hotel names unless explicitly given.
+9. Add a short "Inclusions" section.
+10. Add a short "Exclusions" section.
+11. Add a short note for customization.
+""".strip()
+
+
+def build_chat_update_prompt(user_message: str, itinerary: str, context: Dict[str, Any]) -> str:
+    return f"""
+You are updating a travel itinerary for Himalayan Kerala Expeditions.
+
+Current itinerary:
+{itinerary}
+
+Customer context:
+{context}
+
+Customer requested this change:
+{user_message}
+
+Instructions:
+1. Return only the updated full itinerary.
+2. Keep it professional and customer-friendly.
+3. Preserve useful details from the current itinerary.
+4. Apply the requested change clearly.
+5. Keep the format easy to read.
+""".strip()
+
+
+def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
+    body = f"{order_id}|{payment_id}"
+    generated_signature = hmac.new(
+        bytes(RAZORPAY_KEY_SECRET, "utf-8"),
+        bytes(body, "utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(generated_signature, signature)
+
 
 # =========================
 # ROOT + HEALTH
 # =========================
 @app.get("/")
 def root():
-    return {"ok": True, "service": "HKE Backend Running"}
+    return {
+        "ok": True,
+        "service": "HKE Backend Running",
+        "version": "3.0.0"
+    }
+
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {
+        "ok": True,
+        "openai_configured": bool(OPENAI_API_KEY),
+        "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
+    }
+
 
 # =========================
 # LEADS
 # =========================
-class LeadIn(BaseModel):
-    source: str = "website"
-    name: str
-    email: str
-    phone: str
-    destination: str
-    startDate: str
-    endDate: str
-    days: int
-    travellers: int
-    rooms: int
-    hotelClass: str
-    guide: str
-    vehicle: str
-    subDestinations: List[str] = []
-
 @app.post("/api/leads")
-def create_lead(lead: LeadIn):
-    try:
-        from google_sheets import insert_lead
-        insert_lead(lead.dict())
-        return {"status": "saved"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lead save failed: {str(e)}")
-
-# =========================
-# AI REQUEST / RESPONSE
-# Accept both camelCase and snake_case from frontend
-# =========================
-class AIPlanRequest(BaseModel):
-    destination: str
-    days: int
-
-    # start / end dates
-    startDate: str = Field(..., alias="start_date")
-    endDate: Optional[str] = Field(default="", alias="end_date")
-
-    # pax / rooms
-    travellers: int = 2
-    rooms: int = 1
-
-    # trip config
-    hotelClass: str = Field("Standard", alias="hotel_category")
-    vehicle: str = "SUV"
-    guide: str = "Without Guide"
-
-    # route
-    startPoint: Optional[str] = Field("", alias="start_point")
-    endPoint: Optional[str] = Field("", alias="end_point")
-
-    # customer note
-    notes: Optional[str] = ""
-
-    # places list
-    interests: Union[List[str], str, None] = Field(default_factory=list, alias="places")
-
-    class Config:
-        populate_by_name = True
-
-
-class AIPlanResponse(BaseModel):
-    itineraryText: str
-    itineraryJson: Dict[str, Any]
-
-
-def _normalize_places(interests: Union[List[str], str, None]) -> List[str]:
-    if interests is None:
-        return []
-    if isinstance(interests, list):
-        return [str(x).strip() for x in interests if str(x).strip()]
-    if isinstance(interests, str):
-        return [x.strip() for x in interests.split(",") if x.strip()]
-    return []
-
-
-SYSTEM_PROMPT = """
-You are a senior India tour operations planner for Himalayan Kerala Expeditions.
-Create REALISTIC, OPERABLE itineraries, not generic travel fluff.
-
-Always prioritize:
-- route practicality
-- real drive times
-- fatigue management
-- check-in / check-out feasibility
-- buffer time
-- commonsense sightseeing order
-
-Rules:
-- Use the customer's Start Point and End Point.
-- Use selected places as MUST-include where practical.
-- Do NOT invent airports, railways, flights, or transfers unless user explicitly mentioned them.
-- Do NOT overpack the trip.
-- Every day must contain:
-  1) start time
-  2) from
-  3) to
-  4) realistic drive time
-  5) practical sightseeing steps
-  6) short meals / breaks
-  7) night stay
-- Hill driving: approx 25–35 km/h average
-- Plains driving: approx 45–60 km/h average
-- Avoid > 8 hrs hill drive unless unavoidable, and mention it as a transfer-heavy day.
-- If something cannot fit, move it into optional_if_time.
-- Output only valid JSON.
-- No markdown, no code block, no extra explanation outside JSON.
-
-STRICT JSON FORMAT:
-{
-  "title": "...",
-  "summary": "...",
-  "route_overview": ["Day 1: ...", "Day 2: ..."],
-  "day_wise": [
-    {
-      "day": 1,
-      "start_time": "08:00",
-      "from": "...",
-      "to": "...",
-      "drive_time": "X–Y hrs",
-      "plan": ["...", "..."],
-      "meals_breaks": ["...", "..."],
-      "night_stay": "..."
-    }
-  ],
-  "optional_if_time": ["...", "..."],
-  "package_includes": ["..."],
-  "package_excludes": ["..."],
-  "notes": ["...", "..."]
-}
-""".strip()
-
-
-def _build_user_prompt(req: AIPlanRequest) -> str:
-    places = _normalize_places(req.interests)
-    places_text = ", ".join(places) if places else "No specific places selected"
-
-    return f"""
-Customer details:
-Destination: {req.destination}
-Trip Start Point: {req.startPoint}
-Trip End Point: {req.endPoint}
-Start Date: {req.startDate}
-End Date: {req.endDate}
-Days: {req.days}
-Travellers: {req.travellers}
-Rooms: {req.rooms}
-Hotel Category: {req.hotelClass}
-Vehicle: {req.vehicle}
-Guide: {req.guide}
-Selected Places (must include): {places_text}
-Customer Notes: {req.notes or "None"}
-
-Create a practical, comfortable, sellable day-wise plan following all rules.
-Return JSON only.
-""".strip()
-
-
-def _safe_json_load(s: str):
-    try:
-        return json.loads(s)
-    except Exception:
-        return None
-
-
-def _fallback_itinerary_json(req: AIPlanRequest) -> Dict[str, Any]:
-    places = _normalize_places(req.interests)
-    return {
-        "title": f"{req.destination} {req.days} Day Plan",
-        "summary": "Practical itinerary prepared by HKE AI. Final routing may adjust slightly based on weather, roads, hotel availability and local conditions.",
-        "route_overview": [
-            f"Day 1: Arrival and local movement from {req.startPoint or 'start point'}",
-            f"Day {req.days}: Return towards {req.endPoint or 'end point'}"
-        ],
-        "day_wise": [],
-        "optional_if_time": places[:3],
-        "package_includes": [
-            "Accommodation as per selected category (final confirmation at booking stage)",
-            "Private vehicle with driver as per itinerary",
-            "Sightseeing as per route (time and weather permitting)",
-            "Support from HKE team before and during travel"
-        ],
-        "package_excludes": [
-            "Meals unless included in selected hotel plan",
-            "Entry fees, activities and permits",
-            "Personal expenses, tips and shopping",
-            "Anything not mentioned under Includes"
-        ],
-        "notes": [
-            "This is an AI-generated draft itinerary.",
-            "Final routing may change due to weather, road, traffic or local restrictions."
-        ]
-    }
-
-
-def _json_to_text(j: Dict[str, Any]) -> str:
-    title = j.get("title", "Trip Plan")
-    summary = j.get("summary", "")
-    days = j.get("day_wise", [])
-    opt = j.get("optional_if_time", [])
-    inc = j.get("package_includes", [])
-    exc = j.get("package_excludes", [])
-    notes = j.get("notes", [])
-
-    parts = [title]
-    if summary:
-        parts.append(summary)
-    parts.append("")
-
-    for d in days:
-        parts.append(
-            f"Day {d.get('day','')} — {d.get('from','')} → {d.get('to','')} | "
-            f"Start {d.get('start_time','')} | Drive {d.get('drive_time','')}"
-        )
-        for p in d.get("plan", []):
-            parts.append(f"• {p}")
-        if d.get("meals_breaks"):
-            parts.append("Meals / breaks:")
-            for m in d.get("meals_breaks", []):
-                parts.append(f"• {m}")
-        if d.get("night_stay"):
-            parts.append(f"Night stay: {d.get('night_stay')}")
-        parts.append("")
-
-    if opt:
-        parts.append("Optional if time permits:")
-        for x in opt:
-            parts.append(f"• {x}")
-        parts.append("")
-
-    parts.append("PACKAGE INCLUDES:")
-    for x in inc:
-        parts.append(f"• {x}")
-    parts.append("")
-
-    parts.append("PACKAGE EXCLUDES:")
-    for x in exc:
-        parts.append(f"• {x}")
-    parts.append("")
-
-    if notes:
-        parts.append("NOTES:")
-        for x in notes:
-            parts.append(f"• {x}")
-
-    return "\n".join(parts).strip()
-
-
-# =========================
-# AI GENERATE
-# =========================
-@app.post("/api/ai/plan", response_model=AIPlanResponse)
-def generate_itinerary(req: AIPlanRequest):
-    prompt = _build_user_prompt(req)
-
-    try:
-        resp = client.responses.create(
-            model="gpt-4.1-mini",
-            instructions=SYSTEM_PROMPT,
-            input=prompt,
-            max_output_tokens=1400,
-        )
-
-        text = (resp.output_text or "").strip()
-        if not text:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary")
-
-        itinerary_json = _safe_json_load(text)
-
-        if not itinerary_json or "day_wise" not in itinerary_json:
-            itinerary_json = _fallback_itinerary_json(req)
-
-        # Ensure required sections exist even if model omits them
-        itinerary_json.setdefault("title", f"{req.destination} {req.days} Day Plan")
-        itinerary_json.setdefault("summary", "Practical itinerary prepared by HKE AI.")
-        itinerary_json.setdefault("route_overview", [])
-        itinerary_json.setdefault("day_wise", [])
-        itinerary_json.setdefault("optional_if_time", [])
-        itinerary_json.setdefault("package_includes", [
-            "Accommodation as per selected category (final confirmation at booking stage)",
-            "Private vehicle with driver as per itinerary",
-            "Sightseeing as per route (time and weather permitting)",
-            "Support from HKE team before and during travel"
-        ])
-        itinerary_json.setdefault("package_excludes", [
-            "Meals unless included in selected hotel plan",
-            "Entry fees, activities and permits",
-            "Personal expenses, tips and shopping",
-            "Anything not mentioned under Includes"
-        ])
-        itinerary_json.setdefault("notes", [
-            "Final routing may change due to weather, road or local conditions."
-        ])
-
-        itinerary_text = _json_to_text(itinerary_json)
-
-        return {
-            "itineraryText": itinerary_text,
-            "itineraryJson": itinerary_json
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI generate failed: {str(e)}")
-
-
-@app.post("/api/ai/itinerary", response_model=AIPlanResponse)
-def generate_itinerary_alias(req: AIPlanRequest):
-    return generate_itinerary(req)
-
-
-# =========================
-# AI CHAT (EDIT ITINERARY)
-# =========================
-class AIChatRequest(BaseModel):
-    current_itinerary: str
-    user_message: str
-
-class AIChatResponse(BaseModel):
-    itinerary: str
-
-@app.post("/api/ai/chat", response_model=AIChatResponse)
-def chat_modify_itinerary(req: AIChatRequest):
-    prompt = f"""
-You are improving an existing itinerary to be more practical and route sensible.
-Avoid generic fluff. Keep route realistic, comfortable and sellable.
-
-CURRENT ITINERARY:
-{req.current_itinerary}
-
-USER REQUEST:
-{req.user_message}
-
-Return the FULL UPDATED itinerary in clean day-wise format.
-""".strip()
-
-    try:
-        resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt,
-            max_output_tokens=900,
-        )
-        text = (resp.output_text or "").strip()
-        if not text:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary")
-        return {"itinerary": text}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI chat failed: {str(e)}")
-
-
-# =========================
-# FINALIZE
-# =========================
-class FinalizeRequest(BaseModel):
-    itinerary: str
-    context: Dict[str, Any] = Field(default_factory=dict)
-
-@app.post("/api/ai/finalize")
-def finalize_itinerary(req: FinalizeRequest):
+def create_lead(payload: LeadIn):
     return {
         "ok": True,
-        "message": "Finalized (stored in browser for next page).",
-        "itinerary": req.itinerary,
-        "context": req.context,
+        "message": "Lead received successfully.",
+        "lead": payload.dict()
     }
 
 
 # =========================
-# RAZORPAY ORDER + VERIFY
+# AI ITINERARY GENERATION
 # =========================
-class RazorpayOrderIn(BaseModel):
-    amount_inr: int
-    receipt: str
-    notes: Dict[str, Any] = Field(default_factory=dict)
+@app.post("/api/ai/itinerary")
+def generate_itinerary(payload: ItineraryIn):
+    if not client:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
 
-class RazorpayOrderOut(BaseModel):
-    key_id: str
-    order_id: str
-    amount: int
-    currency: str
+    if not payload.destination:
+        raise HTTPException(status_code=400, detail="Destination is required.")
 
-@app.post("/api/payments/razorpay/order", response_model=RazorpayOrderOut)
-def create_razorpay_order(req: RazorpayOrderIn):
-    if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="Razorpay keys not configured")
-
-    amount_paise = int(req.amount_inr) * 100
+    prompt = build_itinerary_prompt(payload)
 
     try:
-        r = requests.post(
-            "https://api.razorpay.com/v1/orders",
-            auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET),
-            json={
-                "amount": amount_paise,
-                "currency": "INR",
-                "receipt": req.receipt,
-                "notes": req.notes or {}
-            },
-            timeout=20
+        response = client.responses.create(
+            model="gpt-5-mini",
+            input=prompt
         )
 
-        if r.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"Razorpay order error: {r.text}")
+        text = response.output_text.strip() if hasattr(response, "output_text") else ""
+        if not text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary.")
 
-        data = r.json()
         return {
-            "key_id": RAZORPAY_KEY_ID,
-            "order_id": data["id"],
-            "amount": data["amount"],
-            "currency": data["currency"]
+            "ok": True,
+            "itinerary": text
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Razorpay order failed: {str(e)}")
-
-
-class RazorpayVerifyIn(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-
-@app.post("/api/payments/razorpay/verify")
-def verify_razorpay_signature(req: RazorpayVerifyIn):
-    if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="Razorpay secret not configured")
-
-    body = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
-    generated = hmac.new(
-        bytes(RAZORPAY_KEY_SECRET, "utf-8"),
-        bytes(body, "utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-
-    ok = hmac.compare_digest(generated, req.razorpay_signature)
-    return {"ok": ok}
+        raise HTTPException(status_code=500, detail=f"Itinerary generation failed: {str(e)}")
 
 
 # =========================
-# SUPPORT CHATBOT
+# AI ITINERARY CHAT UPDATE
 # =========================
-class SupportChatRequest(BaseModel):
-    message: str
+@app.post("/api/ai/chat")
+def update_itinerary(payload: ChatUpdateIn):
+    if not client:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
 
-class SupportChatResponse(BaseModel):
-    reply: str
+    if not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Message is required.")
+    if not payload.itinerary.strip():
+        raise HTTPException(status_code=400, detail="Current itinerary is required.")
 
-@app.post("/api/support/chat", response_model=SupportChatResponse)
-def customer_care_chat(req: SupportChatRequest):
-    msg = (req.message or "").strip()
-    if not msg:
-        raise HTTPException(status_code=400, detail="message is required")
-
-    instructions = """
-You are the CUSTOMER CARE assistant for Himalayan Kerala Expeditions (HKE).
-This chatbot is ONLY for customer support issues:
-- payment issues
-- booking status / confirmation
-- cancellation / reschedule
-- refund timelines
-- pickup timing / coordination
-- general assistance
-- connect to human agent
-
-STRICT RULES:
-- DO NOT create itineraries and DO NOT sell packages here.
-- If user asks for itinerary/package/plan, reply: "Please use Plan with AI page for itinerary."
-- Be concise and helpful.
-- If user asks for human support, immediately give contact details.
-
-HKE Contact:
-WhatsApp: +91 97972 94747
-Phone: +91 97972 94747
-Email: himalayankeralaexpeditions@gmail.com
-""".strip()
+    prompt = build_chat_update_prompt(
+        user_message=payload.message,
+        itinerary=payload.itinerary,
+        context=payload.context
+    )
 
     try:
-        resp = client.responses.create(
-            model="gpt-4.1-mini",
-            instructions=instructions,
-            input=msg,
-            max_output_tokens=250,
+        response = client.responses.create(
+            model="gpt-5-mini",
+            input=prompt
         )
-        reply = (resp.output_text or "").strip()
-        if not reply:
-            reply = "Please share your issue in 1 line. For urgent help WhatsApp: +91 97972 94747"
-        return {"reply": reply}
+
+        text = response.output_text.strip() if hasattr(response, "output_text") else ""
+        if not text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary.")
+
+        return {
+            "ok": True,
+            "itinerary": text
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Support chat failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Itinerary update failed: {str(e)}")
+
+
+# =========================
+# PAYMENT CONFIG
+# =========================
+@app.get("/api/payment/config")
+def payment_config():
+    if not RAZORPAY_KEY_ID:
+        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_ID is missing in Render environment.")
+
+    return {
+        "ok": True,
+        "razorpayKeyId": RAZORPAY_KEY_ID
+    }
+
+
+# =========================
+# CREATE RAZORPAY ORDER
+# =========================
+@app.post("/api/payment/create-order")
+def create_order(payload: CreateOrderIn):
+    if not razorpay_client:
+        raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
+
+    try:
+        order_data = {
+            "amount": payload.amount,
+            "currency": payload.currency,
+            "receipt": payload.receipt,
+            "notes": payload.notes or {},
+        }
+
+        order = razorpay_client.order.create(data=order_data)
+
+        return {
+            "ok": True,
+            "key": RAZORPAY_KEY_ID,
+            "order": order
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Razorpay order creation failed: {str(e)}")
+
+
+# =========================
+# VERIFY PAYMENT
+# =========================
+@app.post("/api/payment/verify")
+def verify_payment(payload: VerifyPaymentIn):
+    if not RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
+
+    is_valid = verify_razorpay_signature(
+        order_id=payload.razorpay_order_id,
+        payment_id=payload.razorpay_payment_id,
+        signature=payload.razorpay_signature
+    )
+
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid payment signature.")
+
+    return {
+        "ok": True,
+        "message": "Payment verified successfully."
+    }
