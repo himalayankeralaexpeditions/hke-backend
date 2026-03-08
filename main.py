@@ -4,11 +4,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Union
 import os
 import json
-import base64
-import hmac
-import hashlib
-import time
-import requests
 
 from openai import OpenAI
 
@@ -70,35 +65,32 @@ def create_lead(lead: LeadIn):
         raise HTTPException(status_code=500, detail=f"Lead save failed: {str(e)}")
 
 # =========================
-# AI REQUEST (accept camel + snake)
+# AI REQUEST (ACCEPT BOTH camelCase + snake_case)
 # =========================
 class AIPlanRequest(BaseModel):
     destination: str
     days: int
 
-    # Accept both "startDate" and "start_date"
     startDate: str = Field(..., alias="start_date")
-    endDate: Optional[str] = Field(default="", alias="end_date")
-
     travellers: int = 2
     rooms: int = 1
-    hotelClass: str = "Standard"
+
+    hotelClass: str = Field("Standard", alias="hotel_category")
     vehicle: str = "SUV"
     guide: str = "Without Guide"
 
-    startPoint: Optional[str] = ""
-    endPoint: Optional[str] = ""
+    startPoint: Optional[str] = Field("", alias="start_point")
+    endPoint: Optional[str] = Field("", alias="end_point")
     notes: Optional[str] = ""
 
-    # places can come as array OR comma string
-    interests: Union[List[str], str, None] = Field(default_factory=list)
+    # frontend sends interests: [..] ; accept also "places"
+    interests: Union[List[str], str, None] = Field(default_factory=list, alias="places")
 
     class Config:
-        allow_population_by_field_name = True  # allows startDate input too
-
+        populate_by_name = True  # allows sending both alias & field name
 
 class AIPlanResponse(BaseModel):
-    itinerary: str
+    itineraryText: str
     itineraryJson: Dict[str, Any]
 
 def _normalize_places(interests: Union[List[str], str, None]) -> List[str]:
@@ -110,12 +102,9 @@ def _normalize_places(interests: Union[List[str], str, None]) -> List[str]:
         return [x.strip() for x in interests.split(",") if x.strip()]
     return []
 
-def _safe_str(x: Optional[str]) -> str:
-    return (x or "").strip()
-
 SYSTEM_PROMPT = """
 You are a senior India tour operations planner for Himalayan Kerala Expeditions.
-Your job is to create REALISTIC, OPERABLE itineraries (not generic travel content).
+Create REALISTIC, OPERABLE itineraries (not generic travel content).
 Always prioritize practicality: routing, time, fatigue, check-in/out, buffer time.
 
 Rules:
@@ -146,22 +135,12 @@ Output format STRICT:
 Return ONLY JSON with keys:
 {
  "title": "...",
- "destination": "...",
- "startDate": "YYYY-MM-DD",
- "endDate": "YYYY-MM-DD",
- "days": 5,
- "travellers": 2,
- "rooms": 1,
- "hotelClass": "Standard",
- "vehicle": "SUV",
- "guide": "Without Guide",
  "summary": "...",
  "route_overview": ["Day 1: ...", "Day 2: ..."],
  "day_wise": [
    {
      "day": 1,
-     "title": "Short day title",
-     "start_time": "08:30",
+     "start_time": "08:00",
      "from": "...",
      "to": "...",
      "drive_time": "X–Y hrs",
@@ -179,15 +158,14 @@ Return ONLY JSON with keys:
 
 def _build_user_prompt(req: AIPlanRequest) -> str:
     places = _normalize_places(req.interests)
-    places_text = ", ".join(places) if places else "Best highlights as per destination"
+    places_text = ", ".join(places) if places else "No specific places selected"
 
     return f"""
 Customer details:
 Destination: {req.destination}
-Trip Start Point: {_safe_str(req.startPoint)}
-Trip End Point: {_safe_str(req.endPoint)}
+Trip Start Point: {req.startPoint}
+Trip End Point: {req.endPoint}
 Start Date: {req.startDate}
-End Date: {req.endDate}
 Days: {req.days}
 Travellers: {req.travellers}
 Rooms: {req.rooms}
@@ -195,37 +173,74 @@ Hotel Category: {req.hotelClass}
 Vehicle: {req.vehicle}
 Guide: {req.guide}
 Selected Places (must include): {places_text}
-Customer Notes: {_safe_str(req.notes) or "None"}
+Customer Notes: {req.notes or "None"}
 
 Create a practical day-wise plan following all rules. Return JSON only.
 """.strip()
 
-def _standard_includes():
-    return [
-        "Accommodation as per selected category (standard check-in/check-out times)",
-        "Private vehicle with driver as per itinerary (point-to-point as planned)",
-        "Sightseeing as per route (time & weather permitting)",
-        "Basic trip coordination support from HKE team before and during travel",
-    ]
+def _safe_json_load(s: str) -> Optional[Dict[str, Any]]:
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
 
-def _standard_excludes():
-    return [
-        "Meals not mentioned in hotel plan (lunch/dinner usually excluded)",
-        "Entry tickets, activities, rides (snow activities, ropeway, rafting, etc.)",
-        "Personal expenses (shopping, tips, laundry, room service)",
-        "Any changes due to weather/road closure beyond operator control",
-    ]
+def _json_to_text(j: Dict[str, Any]) -> str:
+    # readable WhatsApp-friendly text from JSON
+    title = j.get("title", "Trip Plan")
+    summary = j.get("summary", "")
+    days = j.get("day_wise", [])
+    opt = j.get("optional_if_time", [])
+    inc = j.get("package_includes", [])
+    exc = j.get("package_excludes", [])
+    notes = j.get("notes", [])
 
-def _standard_notes():
-    return [
-        "Final order depends on road/time/weather and local conditions.",
-        "Hotel selection is as per category and availability at booking time.",
-        "Hills driving times vary—start early to keep the plan comfortable.",
-    ]
+    parts = [f"{title}".strip()]
+    if summary:
+        parts.append(summary.strip())
+    parts.append("")
 
-# =========================
-# AI GENERATE (MAIN)
-# =========================
+    for d in days:
+        day = d.get("day", "")
+        st = d.get("start_time", "")
+        frm = d.get("from", "")
+        to = d.get("to", "")
+        drive = d.get("drive_time", "")
+        parts.append(f"Day {day} — {frm} → {to} | Start {st} | Drive {drive}".strip())
+        for p in d.get("plan", [])[:10]:
+            parts.append(f"• {p}")
+        mb = d.get("meals_breaks", [])
+        if mb:
+            parts.append("Meals / breaks:")
+            for m in mb[:6]:
+                parts.append(f"• {m}")
+        ns = d.get("night_stay", "")
+        if ns:
+            parts.append(f"Night stay: {ns}")
+        parts.append("")
+
+    if opt:
+        parts.append("Optional if time permits:")
+        for o in opt[:10]:
+            parts.append(f"• {o}")
+        parts.append("")
+
+    parts.append("PACKAGE INCLUDES:")
+    for x in inc[:10]:
+        parts.append(f"• {x}")
+    parts.append("")
+
+    parts.append("PACKAGE EXCLUDES:")
+    for x in exc[:12]:
+        parts.append(f"• {x}")
+    parts.append("")
+
+    if notes:
+        parts.append("NOTES:")
+        for n in notes[:10]:
+            parts.append(f"• {n}")
+
+    return "\n".join(parts).strip()
+
 @app.post("/api/ai/plan", response_model=AIPlanResponse)
 def generate_itinerary(req: AIPlanRequest):
     user_prompt = _build_user_prompt(req)
@@ -237,45 +252,41 @@ def generate_itinerary(req: AIPlanRequest):
             input=user_prompt,
             max_output_tokens=1400,
         )
-
         text = (resp.output_text or "").strip()
         if not text:
             raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary")
 
-        # Parse JSON strictly
-        try:
-            itinerary_json = json.loads(text)
-        except Exception:
-            # If model returns JSON wrapped in text, attempt extraction
-            start = text.find("{")
-            end = text.rfind("}")
-            if start >= 0 and end > start:
-                itinerary_json = json.loads(text[start:end+1])
-            else:
-                raise
+        it_json = _safe_json_load(text)
 
-        # Ensure standard sections exist even if model missed
-        itinerary_json.setdefault("destination", req.destination)
-        itinerary_json.setdefault("startDate", req.startDate)
-        itinerary_json.setdefault("endDate", req.endDate)
-        itinerary_json.setdefault("days", req.days)
-        itinerary_json.setdefault("travellers", req.travellers)
-        itinerary_json.setdefault("rooms", req.rooms)
-        itinerary_json.setdefault("hotelClass", req.hotelClass)
-        itinerary_json.setdefault("vehicle", req.vehicle)
-        itinerary_json.setdefault("guide", req.guide)
+        # If model returned text (rare), fallback into a minimal JSON wrapper
+        if not it_json or "day_wise" not in it_json:
+            it_json = {
+                "title": f"{req.destination} {req.days}D Plan",
+                "summary": "Plan generated. Please review with HKE team for final confirmation.",
+                "route_overview": [],
+                "day_wise": [],
+                "optional_if_time": [],
+                "package_includes": [
+                    "Accommodation as per selected category (final confirmation)",
+                    "Private vehicle with driver as per itinerary",
+                    "Sightseeing as per route (time & weather permitting)",
+                    "Support from HKE team before and during travel"
+                ],
+                "package_excludes": [
+                    "Meals unless included by selected hotel plan",
+                    "Entry fees, activities, permits",
+                    "Personal expenses and tips",
+                    "Anything not mentioned under Includes"
+                ],
+                "notes": ["This is an AI plan. Final routing may change due to weather/road conditions."]
+            }
 
-        itinerary_json.setdefault("package_includes", _standard_includes())
-        itinerary_json.setdefault("package_excludes", _standard_excludes())
-        itinerary_json.setdefault("notes", _standard_notes())
-        itinerary_json.setdefault("optional_if_time", [])
-
-        # Return both: pretty text + json
-        pretty = json.dumps(itinerary_json, ensure_ascii=False, indent=2)
+        # Also provide a readable itineraryText
+        itinerary_text = _json_to_text(it_json)
 
         return {
-            "itinerary": pretty,
-            "itineraryJson": itinerary_json
+            "itineraryText": itinerary_text,
+            "itineraryJson": it_json
         }
 
     except HTTPException:
@@ -283,76 +294,70 @@ def generate_itinerary(req: AIPlanRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI generate failed: {str(e)}")
 
-# Alias
+# ✅ Alias
 @app.post("/api/ai/itinerary", response_model=AIPlanResponse)
 def generate_itinerary_alias(req: AIPlanRequest):
     return generate_itinerary(req)
 
 # =========================
-# RAZORPAY (Order + Verify)
+# AI CHAT (EDIT ITINERARY) - KEEP SIMPLE
 # =========================
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+class AIChatRequest(BaseModel):
+    current_itinerary: str
+    user_message: str
 
-class RazorpayOrderIn(BaseModel):
-    amount_inr: int  # in rupees
-    receipt: str
-    notes: Dict[str, Any] = Field(default_factory=dict)
+class AIChatResponse(BaseModel):
+    itinerary: str
 
-class RazorpayOrderOut(BaseModel):
-    key_id: str
-    order_id: str
-    amount: int
-    currency: str
+@app.post("/api/ai/chat", response_model=AIChatResponse)
+def chat_modify_itinerary(req: AIChatRequest):
+    prompt = f"""
+You are improving an existing itinerary to be MORE PRACTICAL.
+Avoid generic lines. Keep route realistic and comfortable.
 
-@app.post("/api/payments/razorpay/order", response_model=RazorpayOrderOut)
-def create_razorpay_order(req: RazorpayOrderIn):
-    if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="Razorpay keys not set in server env")
+CURRENT ITINERARY:
+{req.current_itinerary}
 
-    amount_paise = int(req.amount_inr) * 100
-    payload = {
-        "amount": amount_paise,
-        "currency": "INR",
-        "receipt": req.receipt,
-        "notes": req.notes or {}
-    }
+USER REQUEST:
+{req.user_message}
 
-    auth = (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
+Return the FULL UPDATED itinerary in clean day-wise format.
+""".strip()
+
     try:
-        r = requests.post("https://api.razorpay.com/v1/orders", json=payload, auth=auth, timeout=20)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"Razorpay order error: {r.text}")
-        data = r.json()
-        return {
-            "key_id": RAZORPAY_KEY_ID,
-            "order_id": data["id"],
-            "amount": data["amount"],
-            "currency": data["currency"],
-        }
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=prompt,
+            max_output_tokens=900,
+        )
+        text = (resp.output_text or "").strip()
+        if not text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary")
+        return {"itinerary": text}
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Razorpay order create failed: {str(e)}")
-
-class RazorpayVerifyIn(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-
-@app.post("/api/payments/razorpay/verify")
-def verify_razorpay_signature(req: RazorpayVerifyIn):
-    if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="Razorpay secret not set")
-
-    msg = f"{req.razorpay_order_id}|{req.razorpay_payment_id}".encode("utf-8")
-    expected = hmac.new(RAZORPAY_KEY_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
-
-    ok = hmac.compare_digest(expected, req.razorpay_signature)
-    return {"ok": ok}
+        raise HTTPException(status_code=500, detail=f"AI chat failed: {str(e)}")
 
 # =========================
-# SUPPORT CHATBOT (KEEP)
+# FINALIZE (KEEP)
+# =========================
+class FinalizeRequest(BaseModel):
+    itinerary: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+@app.post("/api/ai/finalize")
+def finalize_itinerary(req: FinalizeRequest):
+    return {
+        "ok": True,
+        "message": "Finalized (stored in browser for next page).",
+        "itinerary": req.itinerary,
+        "context": req.context,
+    }
+
+# =========================
+# CUSTOMER CARE CHATBOT (KEEP)
 # =========================
 class SupportChatRequest(BaseModel):
     message: str
@@ -401,5 +406,6 @@ Email: himalayankeralaexpeditions@gmail.com
         if not reply:
             reply = "Please share your issue in 1 line. For urgent help WhatsApp: +91 97972 94747"
         return {"reply": reply}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Support chat failed: {str(e)}")
