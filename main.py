@@ -1,7 +1,8 @@
 import os
 import hmac
 import hashlib
-from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,19 +10,21 @@ from pydantic import BaseModel, Field
 
 from openai import OpenAI
 import razorpay
+from pymongo import MongoClient
+from pymongo.collection import Collection
 
 
 # =========================
 # APP INIT
 # =========================
 app = FastAPI(
-    title="HKE Backend – AI Trip Planner & Payments",
-    version="3.0.0"
+    title="HKE Backend – AI Trip Planner, Payments & Bookings",
+    version="4.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later you can restrict to your domain
+    allow_origins=["*"],  # later restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +37,7 @@ app.add_middleware(
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+MONGO_URI = os.getenv("MONGO_URI", "").strip()
 
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY not found in environment.")
@@ -41,12 +45,45 @@ if not RAZORPAY_KEY_ID:
     print("WARNING: RAZORPAY_KEY_ID not found in environment.")
 if not RAZORPAY_KEY_SECRET:
     print("WARNING: RAZORPAY_KEY_SECRET not found in environment.")
+if not MONGO_URI:
+    print("WARNING: MONGO_URI not found in environment.")
 
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 razorpay_client = None
 if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+mongo_client = None
+db = None
+leads_collection: Optional[Collection] = None
+bookings_collection: Optional[Collection] = None
+payments_collection: Optional[Collection] = None
+support_logs_collection: Optional[Collection] = None
+
+if MONGO_URI:
+    try:
+        mongo_client = MongoClient(MONGO_URI)
+        db = mongo_client["hke_db"]
+        leads_collection = db["leads"]
+        bookings_collection = db["bookings"]
+        payments_collection = db["payments"]
+        support_logs_collection = db["support_logs"]
+
+        bookings_collection.create_index("booking_ref", unique=True)
+        bookings_collection.create_index("phone")
+        bookings_collection.create_index("email")
+        payments_collection.create_index("razorpay_payment_id", unique=True)
+        payments_collection.create_index("razorpay_order_id")
+        print("MongoDB connected successfully.")
+    except Exception as e:
+        print(f"WARNING: MongoDB connection failed: {e}")
+        mongo_client = None
+        db = None
+        leads_collection = None
+        bookings_collection = None
+        payments_collection = None
+        support_logs_collection = None
 
 
 # =========================
@@ -79,7 +116,7 @@ class ItineraryIn(BaseModel):
 class ChatUpdateIn(BaseModel):
     message: str
     itinerary: str
-    context: Dict[str, Any] = {}
+    context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateOrderIn(BaseModel):
@@ -95,14 +132,46 @@ class VerifyPaymentIn(BaseModel):
     razorpay_signature: str
 
 
+class SupportChatIn(BaseModel):
+    message: str
+
+
+class BookingStatusQuery(BaseModel):
+    phone: Optional[str] = ""
+    booking_ref: Optional[str] = ""
+    email: Optional[str] = ""
+
+
 # =========================
 # HELPERS
 # =========================
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def safe_int(value: Any, default: int = 1) -> int:
     try:
         return int(str(value).strip())
     except Exception:
         return default
+
+
+def normalize_phone(phone: str) -> str:
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    if len(digits) > 10:
+        digits = digits[-10:]
+    return digits
+
+
+def build_booking_ref() -> str:
+    return "HKE-" + datetime.now().strftime("%Y%m%d%H%M%S")
+
+
+def require_mongo() -> None:
+    if bookings_collection is None or payments_collection is None:
+        raise HTTPException(status_code=500, detail="MongoDB is not configured in Render environment.")
 
 
 def build_itinerary_prompt(data: ItineraryIn) -> str:
@@ -163,6 +232,22 @@ Instructions:
 """.strip()
 
 
+def build_support_prompt(user_message: str) -> str:
+    return f"""
+You are HKE Customer Care for Himalayan Kerala Expeditions.
+
+User message:
+{user_message}
+
+Instructions:
+1. Reply like customer support, not salesy.
+2. Help only with payment issues, booking status, cancellation, reschedule, and general support.
+3. Keep the answer short, practical, and easy to understand.
+4. If the user wants a human, tell them to contact WhatsApp: +91 97972 94747.
+5. Do not invent booking details.
+""".strip()
+
+
 def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
     body = f"{order_id}|{payment_id}"
     generated_signature = hmac.new(
@@ -173,6 +258,70 @@ def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) ->
     return hmac.compare_digest(generated_signature, signature)
 
 
+def serialize_booking(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return {}
+    data = dict(doc)
+    if "_id" in data:
+        data["_id"] = str(data["_id"])
+    return data
+
+
+def find_booking_by_order_id(order_id: str) -> Optional[Dict[str, Any]]:
+    if bookings_collection is None:
+        return None
+    return bookings_collection.find_one({"razorpay_order_id": order_id})
+
+
+def make_booking_from_payment(order_id: str, payment_id: str) -> Dict[str, Any]:
+    existing = find_booking_by_order_id(order_id)
+    if existing:
+        update_data = {
+            "payment_status": "paid",
+            "booking_status": existing.get("booking_status", "received"),
+            "razorpay_payment_id": payment_id,
+            "updated_at": utc_now(),
+        }
+        bookings_collection.update_one(
+            {"_id": existing["_id"]},
+            {"$set": update_data}
+        )
+        updated = bookings_collection.find_one({"_id": existing["_id"]})
+        return serialize_booking(updated)
+
+    # fallback if booking was not created at order stage
+    booking_ref = build_booking_ref()
+    booking_doc = {
+        "booking_ref": booking_ref,
+        "customer_name": "",
+        "phone": "",
+        "email": "",
+        "destination": "",
+        "start_date": "",
+        "end_date": "",
+        "days": "",
+        "travellers": "",
+        "rooms": "",
+        "hotel_class": "",
+        "vehicle": "",
+        "guide": "",
+        "places": [],
+        "notes": {},
+        "itinerary": "",
+        "payment_status": "paid",
+        "booking_status": "received",
+        "advance_amount_paise": 0,
+        "currency": "INR",
+        "razorpay_order_id": order_id,
+        "razorpay_payment_id": payment_id,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+    result = bookings_collection.insert_one(booking_doc)
+    booking_doc["_id"] = str(result.inserted_id)
+    return booking_doc
+
+
 # =========================
 # ROOT + HEALTH
 # =========================
@@ -181,7 +330,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "3.0.0"
+        "version": "4.0.0"
     }
 
 
@@ -190,7 +339,9 @@ def health():
     return {
         "ok": True,
         "openai_configured": bool(OPENAI_API_KEY),
-        "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
+        "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET),
+        "mongo_configured": bool(MONGO_URI),
+        "mongo_connected": bool(bookings_collection is not None),
     }
 
 
@@ -199,10 +350,25 @@ def health():
 # =========================
 @app.post("/api/leads")
 def create_lead(payload: LeadIn):
+    doc = {
+        "source": payload.source,
+        "name": payload.name,
+        "email": payload.email,
+        "phone": normalize_phone(payload.phone),
+        "message": payload.message,
+        "created_at": utc_now(),
+    }
+
+    inserted_id = None
+    if leads_collection is not None:
+        result = leads_collection.insert_one(doc)
+        inserted_id = str(result.inserted_id)
+
     return {
         "ok": True,
         "message": "Lead received successfully.",
-        "lead": payload.dict()
+        "lead_id": inserted_id,
+        "lead": doc
     }
 
 
@@ -211,7 +377,7 @@ def create_lead(payload: LeadIn):
 # =========================
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: ItineraryIn):
-    if not client:
+    if not openai_client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
 
     if not payload.destination:
@@ -220,7 +386,7 @@ def generate_itinerary(payload: ItineraryIn):
     prompt = build_itinerary_prompt(payload)
 
     try:
-        response = client.responses.create(
+        response = openai_client.responses.create(
             model="gpt-5-mini",
             input=prompt
         )
@@ -243,7 +409,7 @@ def generate_itinerary(payload: ItineraryIn):
 # =========================
 @app.post("/api/ai/chat")
 def update_itinerary(payload: ChatUpdateIn):
-    if not client:
+    if not openai_client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
 
     if not payload.message.strip():
@@ -258,7 +424,7 @@ def update_itinerary(payload: ChatUpdateIn):
     )
 
     try:
-        response = client.responses.create(
+        response = openai_client.responses.create(
             model="gpt-5-mini",
             input=prompt
         )
@@ -274,6 +440,47 @@ def update_itinerary(payload: ChatUpdateIn):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary update failed: {str(e)}")
+
+
+# =========================
+# SUPPORT CHAT
+# =========================
+@app.post("/api/support/chat")
+def support_chat(payload: SupportChatIn):
+    user_message = payload.message.strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+
+    fallback = (
+        "Please share your issue clearly. "
+        "For urgent help, contact WhatsApp: +91 97972 94747."
+    )
+
+    reply = fallback
+
+    if openai_client:
+        try:
+            response = openai_client.responses.create(
+                model="gpt-5-mini",
+                input=build_support_prompt(user_message)
+            )
+            text = response.output_text.strip() if hasattr(response, "output_text") else ""
+            if text:
+                reply = text
+        except Exception:
+            reply = fallback
+
+    if support_logs_collection is not None:
+        support_logs_collection.insert_one({
+            "message": user_message,
+            "reply": reply,
+            "created_at": utc_now(),
+        })
+
+    return {
+        "ok": True,
+        "reply": reply
+    }
 
 
 # =========================
@@ -298,6 +505,8 @@ def create_order(payload: CreateOrderIn):
     if not razorpay_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
 
+    require_mongo()
+
     try:
         order_data = {
             "amount": payload.amount,
@@ -308,10 +517,50 @@ def create_order(payload: CreateOrderIn):
 
         order = razorpay_client.order.create(data=order_data)
 
+        notes = payload.notes or {}
+        booking_ref = notes.get("booking_ref") or payload.receipt or build_booking_ref()
+
+        booking_doc = {
+            "booking_ref": booking_ref,
+            "customer_name": notes.get("customer_name", ""),
+            "phone": normalize_phone(notes.get("customer_phone", "")),
+            "email": notes.get("customer_email", ""),
+            "destination": notes.get("destination", ""),
+            "start_date": notes.get("start_date", ""),
+            "end_date": notes.get("end_date", ""),
+            "days": notes.get("days", ""),
+            "travellers": notes.get("travellers", ""),
+            "rooms": notes.get("rooms", ""),
+            "hotel_class": notes.get("hotel_class", ""),
+            "vehicle": notes.get("vehicle", ""),
+            "guide": notes.get("guide", ""),
+            "places": notes.get("places", "").split(",") if notes.get("places") else [],
+            "notes": notes,
+            "itinerary": notes.get("itinerary", ""),
+            "payment_status": "created",
+            "booking_status": "pending_payment",
+            "advance_amount_paise": payload.amount,
+            "currency": payload.currency,
+            "razorpay_order_id": order.get("id", ""),
+            "razorpay_payment_id": "",
+            "created_at": utc_now(),
+            "updated_at": utc_now(),
+        }
+
+        existing = bookings_collection.find_one({"booking_ref": booking_ref})
+        if existing:
+            bookings_collection.update_one(
+                {"_id": existing["_id"]},
+                {"$set": booking_doc}
+            )
+        else:
+            bookings_collection.insert_one(booking_doc)
+
         return {
             "ok": True,
             "key": RAZORPAY_KEY_ID,
-            "order": order
+            "order": order,
+            "booking_ref": booking_ref
         }
 
     except Exception as e:
@@ -319,12 +568,14 @@ def create_order(payload: CreateOrderIn):
 
 
 # =========================
-# VERIFY PAYMENT
+# VERIFY PAYMENT + SAVE BOOKING
 # =========================
 @app.post("/api/payment/verify")
 def verify_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
         raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
+
+    require_mongo()
 
     is_valid = verify_razorpay_signature(
         order_id=payload.razorpay_order_id,
@@ -335,7 +586,66 @@ def verify_payment(payload: VerifyPaymentIn):
     if not is_valid:
         raise HTTPException(status_code=400, detail="Invalid payment signature.")
 
+    booking = make_booking_from_payment(
+        order_id=payload.razorpay_order_id,
+        payment_id=payload.razorpay_payment_id
+    )
+
+    payment_doc = {
+        "booking_ref": booking.get("booking_ref", ""),
+        "phone": booking.get("phone", ""),
+        "email": booking.get("email", ""),
+        "amount_paise": booking.get("advance_amount_paise", 0),
+        "currency": booking.get("currency", "INR"),
+        "status": "paid",
+        "razorpay_order_id": payload.razorpay_order_id,
+        "razorpay_payment_id": payload.razorpay_payment_id,
+        "created_at": utc_now(),
+    }
+
+    existing_payment = payments_collection.find_one(
+        {"razorpay_payment_id": payload.razorpay_payment_id}
+    )
+    if not existing_payment:
+        payments_collection.insert_one(payment_doc)
+
     return {
         "ok": True,
-        "message": "Payment verified successfully."
+        "message": "Payment verified successfully.",
+        "booking_ref": booking.get("booking_ref", ""),
+        "booking_status": booking.get("booking_status", "received"),
+        "payment_status": booking.get("payment_status", "paid")
+    }
+
+
+# =========================
+# BOOKING STATUS
+# =========================
+@app.get("/api/booking-status")
+def booking_status(
+    phone: str = "",
+    booking_ref: str = "",
+    email: str = ""
+):
+    require_mongo()
+
+    query: Dict[str, Any] = {}
+
+    if booking_ref.strip():
+        query["booking_ref"] = booking_ref.strip()
+    elif phone.strip():
+        query["phone"] = normalize_phone(phone)
+    elif email.strip():
+        query["email"] = email.strip()
+    else:
+        raise HTTPException(status_code=400, detail="Provide booking_ref or phone or email.")
+
+    items = list(
+        bookings_collection.find(query).sort("created_at", -1)
+    )
+
+    return {
+        "ok": True,
+        "count": len(items),
+        "bookings": [serialize_booking(x) for x in items]
     }
