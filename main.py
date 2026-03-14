@@ -2,8 +2,9 @@ import os
 import hmac
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -12,14 +13,15 @@ from openai import OpenAI
 import razorpay
 from pymongo import MongoClient
 from pymongo.collection import Collection
+from twilio.rest import Client as TwilioClient
 
 
 # =========================
 # APP INIT
 # =========================
 app = FastAPI(
-    title="HKE Backend – Orders, Payments & Bookings",
-    version="5.0.0"
+    title="HKE Backend – Hybrid OTP, Orders, Payments & Bookings",
+    version="6.0.0"
 )
 
 app.add_middleware(
@@ -39,8 +41,16 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 
+MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
+MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID", "").strip()
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_VERIFY_SERVICE_SID = os.getenv("TWILIO_VERIFY_SERVICE_SID", "").strip()
+
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
+twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
 
 mongo_client = None
 db = None
@@ -48,6 +58,7 @@ leads_collection: Optional[Collection] = None
 bookings_collection: Optional[Collection] = None
 payments_collection: Optional[Collection] = None
 support_logs_collection: Optional[Collection] = None
+otp_logs_collection: Optional[Collection] = None
 mongo_error_message = ""
 
 if MONGO_URI:
@@ -60,6 +71,7 @@ if MONGO_URI:
         bookings_collection = db["bookings"]
         payments_collection = db["payments"]
         support_logs_collection = db["support_logs"]
+        otp_logs_collection = db["otp_logs"]
 
         bookings_collection.create_index("booking_ref", unique=True)
         bookings_collection.create_index("phone")
@@ -130,15 +142,18 @@ class CreateBalanceOrderIn(BaseModel):
     payment_type: str = Field(default="custom_partial")  # balance_full / custom_partial
 
 
-class OrderLookupIn(BaseModel):
-    phone: Optional[str] = ""
-    email: Optional[str] = ""
-    booking_ref: Optional[str] = ""
-
-
 class CancelBookingIn(BaseModel):
     booking_ref: str
     reason: str = ""
+
+
+class SendOtpIn(BaseModel):
+    phone: str
+
+
+class VerifyOtpIn(BaseModel):
+    phone: str
+    otp: str
 
 
 # =========================
@@ -164,6 +179,38 @@ def normalize_phone(phone: str) -> str:
     return digits
 
 
+def is_india_number(phone: str) -> bool:
+    raw = str(phone or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+
+    if raw.startswith("+91"):
+        return True
+    if digits.startswith("91") and len(digits) >= 12:
+        return True
+    if len(digits) == 10:
+        return True
+    return False
+
+
+def to_india_msg91_number(phone: str) -> str:
+    digits = normalize_phone(phone)
+    if len(digits) != 10:
+        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit Indian mobile number.")
+    return "91" + digits
+
+
+def to_twilio_phone(phone: str) -> str:
+    raw = str(phone or "").strip()
+    if raw.startswith("+"):
+        return raw
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits.startswith("91") and len(digits) >= 12:
+        return "+" + digits
+    if len(digits) == 10:
+        return "+91" + digits
+    return "+" + digits
+
+
 def parse_date_ymd(date_str: str) -> Optional[datetime]:
     try:
         return datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
@@ -185,6 +232,16 @@ def require_mongo() -> None:
             status_code=500,
             detail="MongoDB is configured but connection failed. Check MONGO_URI, Atlas IP access, username, password, and cluster hostname."
         )
+
+
+def require_msg91() -> None:
+    if not MSG91_AUTH_KEY or not MSG91_TEMPLATE_ID:
+        raise HTTPException(status_code=500, detail="MSG91 is not configured in Render environment.")
+
+
+def require_twilio_verify() -> None:
+    if not twilio_client or not TWILIO_VERIFY_SERVICE_SID:
+        raise HTTPException(status_code=500, detail="Twilio Verify is not configured in Render environment.")
 
 
 def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
@@ -285,6 +342,7 @@ def build_schedule_fields(start_date_str: str) -> Dict[str, Any]:
     full_due = start_dt - timedelta(days=10)
     cancel_until = start_dt - timedelta(days=7)
     today = datetime.now().date()
+
     return {
         "full_payment_due_date": format_ymd(full_due),
         "cancellable_until": format_ymd(cancel_until),
@@ -311,6 +369,7 @@ def get_booking_or_404(booking_ref: str) -> Dict[str, Any]:
 
 def recalc_and_update_booking(booking_ref: str) -> Dict[str, Any]:
     booking = get_booking_or_404(booking_ref)
+
     payment_items = list(payments_collection.find({
         "booking_ref": booking_ref,
         "status": "paid"
@@ -326,6 +385,7 @@ def recalc_and_update_booking(booking_ref: str) -> Dict[str, Any]:
     if paid_total > 0 and money["remaining_amount_paise"] > 0:
         payment_status = "partially_paid"
         booking_status = "advance_paid"
+
     if money["remaining_amount_paise"] == 0 and total_amount > 0:
         payment_status = "fully_paid"
         booking_status = "confirmed"
@@ -337,7 +397,11 @@ def recalc_and_update_booking(booking_ref: str) -> Dict[str, Any]:
         "updated_at": utc_now()
     }
 
-    bookings_collection.update_one({"_id": booking["_id"]}, {"$set": update_data})
+    bookings_collection.update_one(
+        {"_id": booking["_id"]},
+        {"$set": update_data}
+    )
+
     return serialize_doc(bookings_collection.find_one({"_id": booking["_id"]}))
 
 
@@ -349,7 +413,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "5.0.0"
+        "version": "6.0.0"
     }
 
 
@@ -361,8 +425,189 @@ def health():
         "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET),
         "mongo_configured": bool(MONGO_URI),
         "mongo_connected": bool(bookings_collection is not None),
+        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_TEMPLATE_ID),
+        "twilio_verify_configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID),
         "mongo_error": mongo_error_message if mongo_error_message else ""
     }
+
+
+# =========================
+# OTP AUTH (HYBRID)
+# =========================
+@app.post("/api/auth/send-otp")
+def send_otp(payload: SendOtpIn):
+    require_mongo()
+
+    if is_india_number(payload.phone):
+        require_msg91()
+
+        mobile = to_india_msg91_number(payload.phone)
+        url = "https://control.msg91.com/api/v5/otp"
+
+        headers = {
+            "authkey": MSG91_AUTH_KEY,
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "template_id": MSG91_TEMPLATE_ID,
+            "mobile": mobile
+        }
+
+        try:
+            r = requests.post(url, json=body, headers=headers, timeout=20)
+            data = r.json() if r.text else {}
+
+            if r.status_code >= 400:
+                raise HTTPException(status_code=500, detail=f"MSG91 OTP failed: {data}")
+
+            if otp_logs_collection is not None:
+                otp_logs_collection.insert_one({
+                    "provider": "MSG91",
+                    "phone": normalize_phone(payload.phone),
+                    "phone_raw": payload.phone,
+                    "status": "sent",
+                    "type": "send",
+                    "created_at": utc_now()
+                })
+
+            return {
+                "ok": True,
+                "provider": "MSG91",
+                "message": "OTP sent successfully."
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"MSG91 OTP send failed: {str(e)}")
+
+    require_twilio_verify()
+    phone_twilio = to_twilio_phone(payload.phone)
+
+    try:
+        verification = twilio_client.verify.v2.services(TWILIO_VERIFY_SERVICE_SID).verifications.create(
+            to=phone_twilio,
+            channel="sms"
+        )
+
+        if otp_logs_collection is not None:
+            otp_logs_collection.insert_one({
+                "provider": "TWILIO",
+                "phone": payload.phone,
+                "phone_raw": payload.phone,
+                "status": getattr(verification, "status", "pending"),
+                "type": "send",
+                "created_at": utc_now()
+            })
+
+        return {
+            "ok": True,
+            "provider": "TWILIO",
+            "message": "OTP sent successfully.",
+            "status": getattr(verification, "status", "pending")
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Twilio OTP send failed: {str(e)}")
+
+
+@app.post("/api/auth/verify-otp")
+def verify_otp(payload: VerifyOtpIn):
+    require_mongo()
+
+    otp = str(payload.otp or "").strip()
+    if not otp:
+        raise HTTPException(status_code=400, detail="OTP is required.")
+
+    if is_india_number(payload.phone):
+        require_msg91()
+
+        mobile = to_india_msg91_number(payload.phone)
+        url = "https://control.msg91.com/api/v5/otp/verify"
+
+        headers = {
+            "authkey": MSG91_AUTH_KEY,
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "mobile": mobile,
+            "otp": otp
+        }
+
+        try:
+            r = requests.post(url, json=body, headers=headers, timeout=20)
+            data = r.json() if r.text else {}
+
+            success = str(data.get("type", "")).lower() == "success"
+            if not success:
+                raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+
+            phone_normal = normalize_phone(payload.phone)
+            orders = list(bookings_collection.find({"phone": phone_normal}).sort("created_at", -1))
+
+            if otp_logs_collection is not None:
+                otp_logs_collection.insert_one({
+                    "provider": "MSG91",
+                    "phone": phone_normal,
+                    "phone_raw": payload.phone,
+                    "status": "approved",
+                    "type": "verify",
+                    "created_at": utc_now()
+                })
+
+            return {
+                "ok": True,
+                "provider": "MSG91",
+                "message": "OTP verified successfully.",
+                "phone": phone_normal,
+                "orders_count": len(orders)
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"MSG91 OTP verification failed: {str(e)}")
+
+    require_twilio_verify()
+    phone_twilio = to_twilio_phone(payload.phone)
+
+    try:
+        check = twilio_client.verify.v2.services(TWILIO_VERIFY_SERVICE_SID).verification_checks.create(
+            to=phone_twilio,
+            code=otp
+        )
+
+        status = getattr(check, "status", "")
+        if status != "approved":
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+
+        phone_normal = normalize_phone(payload.phone)
+        orders = list(bookings_collection.find({"phone": phone_normal}).sort("created_at", -1))
+
+        if otp_logs_collection is not None:
+            otp_logs_collection.insert_one({
+                "provider": "TWILIO",
+                "phone": phone_normal,
+                "phone_raw": payload.phone,
+                "status": status,
+                "type": "verify",
+                "created_at": utc_now()
+            })
+
+        return {
+            "ok": True,
+            "provider": "TWILIO",
+            "message": "OTP verified successfully.",
+            "phone": phone_normal,
+            "orders_count": len(orders)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Twilio OTP verification failed: {str(e)}")
 
 
 # =========================
@@ -410,7 +655,6 @@ def generate_itinerary(payload: ItineraryIn):
         text = response.output_text.strip() if hasattr(response, "output_text") else ""
         if not text:
             raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary.")
-
         return {"ok": True, "itinerary": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary generation failed: {str(e)}")
@@ -508,7 +752,6 @@ def create_order(payload: CreateOrderIn):
 
         total_amount_paise = safe_int(notes.get("total_amount_paise"), 0)
         if total_amount_paise <= 0:
-            # fallback if frontend didn't send total
             total_amount_paise = payload.amount * 5
 
         money = compute_financials(total_amount_paise, 0)
@@ -583,7 +826,6 @@ def verify_payment(payload: VerifyPaymentIn):
         raise HTTPException(status_code=400, detail="Invalid payment signature.")
 
     booking = bookings_collection.find_one({"razorpay_order_id": payload.razorpay_order_id})
-
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found for this payment.")
 
@@ -634,7 +876,6 @@ def create_balance_order(payload: CreateBalanceOrderIn):
         raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
     require_mongo()
 
-    booking = get_booking_or_404(payload.booking_ref)
     booking = recalc_and_update_booking(payload.booking_ref)
 
     if booking.get("booking_status") == "cancelled":
@@ -654,11 +895,7 @@ def create_balance_order(payload: CreateBalanceOrderIn):
     if payload.payment_type not in ["balance_full", "custom_partial"]:
         raise HTTPException(status_code=400, detail="Invalid payment type.")
 
-    if payload.payment_type == "balance_full":
-        pay_amount = remaining
-    else:
-        pay_amount = payload.amount_paise
-
+    pay_amount = remaining if payload.payment_type == "balance_full" else payload.amount_paise
     receipt = f"{payload.booking_ref}-BAL-{datetime.now().strftime('%H%M%S')}"
 
     order_data = {
@@ -789,6 +1026,7 @@ def get_orders(
         raise HTTPException(status_code=400, detail="Provide booking_ref or phone or email.")
 
     items = list(bookings_collection.find(query).sort("created_at", -1))
+
     return {
         "ok": True,
         "count": len(items),
@@ -798,10 +1036,9 @@ def get_orders(
 
 @app.get("/api/orders/{booking_ref}")
 def get_order_details(booking_ref: str):
-    booking = get_booking_or_404(booking_ref)
     updated = recalc_and_update_booking(booking_ref)
-
     payments = list(payments_collection.find({"booking_ref": booking_ref}).sort("created_at", 1))
+
     return {
         "ok": True,
         "order": updated,
@@ -816,7 +1053,6 @@ def get_order_details(booking_ref: str):
 def cancel_booking(payload: CancelBookingIn):
     require_mongo()
 
-    booking = get_booking_or_404(payload.booking_ref)
     booking = recalc_and_update_booking(payload.booking_ref)
 
     if booking.get("booking_status") == "cancelled":
@@ -838,6 +1074,7 @@ def cancel_booking(payload: CancelBookingIn):
     )
 
     updated = bookings_collection.find_one({"booking_ref": payload.booking_ref})
+
     return {
         "ok": True,
         "message": "Booking cancelled successfully.",
