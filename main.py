@@ -1,8 +1,8 @@
 import os
 import hmac
 import hashlib
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,13 +18,13 @@ from pymongo.collection import Collection
 # APP INIT
 # =========================
 app = FastAPI(
-    title="HKE Backend – AI Trip Planner, Payments & Bookings",
-    version="4.1.0"
+    title="HKE Backend – Orders, Payments & Bookings",
+    version="5.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later restrict to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,20 +39,8 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 
-if not OPENAI_API_KEY:
-    print("WARNING: OPENAI_API_KEY not found in environment.")
-if not RAZORPAY_KEY_ID:
-    print("WARNING: RAZORPAY_KEY_ID not found in environment.")
-if not RAZORPAY_KEY_SECRET:
-    print("WARNING: RAZORPAY_KEY_SECRET not found in environment.")
-if not MONGO_URI:
-    print("WARNING: MONGO_URI not found in environment.")
-
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
-razorpay_client = None
-if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
-    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
 
 mongo_client = None
 db = None
@@ -64,12 +52,7 @@ mongo_error_message = ""
 
 if MONGO_URI:
     try:
-        mongo_client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=10000
-        )
-
-        # force real connection
+        mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
         mongo_client.admin.command("ping")
 
         db = mongo_client["hke_db"]
@@ -86,16 +69,9 @@ if MONGO_URI:
         payments_collection.create_index("razorpay_order_id")
 
         print("MongoDB connected successfully.")
-
     except Exception as e:
         mongo_error_message = str(e)
         print(f"WARNING: MongoDB connection failed: {e}")
-        mongo_client = None
-        db = None
-        leads_collection = None
-        bookings_collection = None
-        payments_collection = None
-        support_logs_collection = None
 
 
 # =========================
@@ -131,6 +107,10 @@ class ChatUpdateIn(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SupportChatIn(BaseModel):
+    message: str
+
+
 class CreateOrderIn(BaseModel):
     amount: int = Field(..., gt=0, description="Amount in paise")
     currency: str = "INR"
@@ -144,8 +124,21 @@ class VerifyPaymentIn(BaseModel):
     razorpay_signature: str
 
 
-class SupportChatIn(BaseModel):
-    message: str
+class CreateBalanceOrderIn(BaseModel):
+    booking_ref: str
+    amount_paise: int = Field(..., gt=0)
+    payment_type: str = Field(default="custom_partial")  # balance_full / custom_partial
+
+
+class OrderLookupIn(BaseModel):
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    booking_ref: Optional[str] = ""
+
+
+class CancelBookingIn(BaseModel):
+    booking_ref: str
+    reason: str = ""
 
 
 # =========================
@@ -155,6 +148,13 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
 def normalize_phone(phone: str) -> str:
     digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
     if len(digits) == 12 and digits.startswith("91"):
@@ -162,6 +162,17 @@ def normalize_phone(phone: str) -> str:
     if len(digits) > 10:
         digits = digits[-10:]
     return digits
+
+
+def parse_date_ymd(date_str: str) -> Optional[datetime]:
+    try:
+        return datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def format_ymd(dt: Optional[datetime]) -> str:
+    return dt.strftime("%Y-%m-%d") if dt else ""
 
 
 def build_booking_ref() -> str:
@@ -174,6 +185,25 @@ def require_mongo() -> None:
             status_code=500,
             detail="MongoDB is configured but connection failed. Check MONGO_URI, Atlas IP access, username, password, and cluster hostname."
         )
+
+
+def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
+    body = f"{order_id}|{payment_id}"
+    generated_signature = hmac.new(
+        bytes(RAZORPAY_KEY_SECRET, "utf-8"),
+        bytes(body, "utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(generated_signature, signature)
+
+
+def serialize_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return {}
+    x = dict(doc)
+    if "_id" in x:
+        x["_id"] = str(x["_id"])
+    return x
 
 
 def build_itinerary_prompt(data: ItineraryIn) -> str:
@@ -203,12 +233,7 @@ Instructions:
 3. Add a short overview.
 4. Create day-wise plan clearly from Day 1 onward.
 5. Keep it practical and realistic.
-6. Mention travel flow naturally.
-7. Keep wording simple and premium.
-8. Do not add fake hotel names unless explicitly given.
-9. Add a short "Inclusions" section.
-10. Add a short "Exclusions" section.
-11. Add a short note for customization.
+6. Add short inclusions, exclusions, and customization note.
 """.strip()
 
 
@@ -230,7 +255,6 @@ Instructions:
 2. Keep it professional and customer-friendly.
 3. Preserve useful details from the current itinerary.
 4. Apply the requested change clearly.
-5. Keep the format easy to read.
 """.strip()
 
 
@@ -242,86 +266,79 @@ User message:
 {user_message}
 
 Instructions:
-1. Reply like customer support, not salesy.
-2. Help only with payment issues, booking status, cancellation, reschedule, and general support.
-3. Keep the answer short, practical, and easy to understand.
+1. Reply like customer support.
+2. Help with payment issues, booking status, cancellation, reschedule, and general support.
+3. Keep the answer short and practical.
 4. If the user wants a human, tell them to contact WhatsApp: +91 97972 94747.
-5. Do not invent booking details.
 """.strip()
 
 
-def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
-    body = f"{order_id}|{payment_id}"
-    generated_signature = hmac.new(
-        bytes(RAZORPAY_KEY_SECRET, "utf-8"),
-        bytes(body, "utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(generated_signature, signature)
-
-
-def serialize_booking(doc: Dict[str, Any]) -> Dict[str, Any]:
-    if not doc:
-        return {}
-    data = dict(doc)
-    if "_id" in data:
-        data["_id"] = str(data["_id"])
-    return data
-
-
-def find_booking_by_order_id(order_id: str) -> Optional[Dict[str, Any]]:
-    if bookings_collection is None:
-        return None
-    return bookings_collection.find_one({"razorpay_order_id": order_id})
-
-
-def make_booking_from_payment(order_id: str, payment_id: str) -> Dict[str, Any]:
-    existing = find_booking_by_order_id(order_id)
-
-    if existing:
-        update_data = {
-            "payment_status": "paid",
-            "booking_status": "received",
-            "razorpay_payment_id": payment_id,
-            "updated_at": utc_now(),
+def build_schedule_fields(start_date_str: str) -> Dict[str, Any]:
+    start_dt = parse_date_ymd(start_date_str)
+    if not start_dt:
+        return {
+            "full_payment_due_date": "",
+            "cancellable_until": "",
+            "can_cancel": False
         }
-        bookings_collection.update_one(
-            {"_id": existing["_id"]},
-            {"$set": update_data}
-        )
-        updated = bookings_collection.find_one({"_id": existing["_id"]})
-        return serialize_booking(updated)
 
-    booking_ref = build_booking_ref()
-    booking_doc = {
-        "booking_ref": booking_ref,
-        "customer_name": "",
-        "phone": "",
-        "email": "",
-        "destination": "",
-        "start_date": "",
-        "end_date": "",
-        "days": "",
-        "travellers": "",
-        "rooms": "",
-        "hotel_class": "",
-        "vehicle": "",
-        "guide": "",
-        "places": [],
-        "notes": {},
-        "itinerary": "",
-        "payment_status": "paid",
-        "booking_status": "received",
-        "advance_amount_paise": 0,
-        "currency": "INR",
-        "razorpay_order_id": order_id,
-        "razorpay_payment_id": payment_id,
-        "created_at": utc_now(),
-        "updated_at": utc_now(),
+    full_due = start_dt - timedelta(days=10)
+    cancel_until = start_dt - timedelta(days=7)
+    today = datetime.now().date()
+    return {
+        "full_payment_due_date": format_ymd(full_due),
+        "cancellable_until": format_ymd(cancel_until),
+        "can_cancel": today <= cancel_until.date()
     }
-    result = bookings_collection.insert_one(booking_doc)
-    booking_doc["_id"] = str(result.inserted_id)
-    return booking_doc
+
+
+def compute_financials(total_amount_paise: int, paid_amount_paise: int) -> Dict[str, int]:
+    remaining = max(total_amount_paise - paid_amount_paise, 0)
+    return {
+        "total_amount_paise": max(total_amount_paise, 0),
+        "paid_amount_paise": max(paid_amount_paise, 0),
+        "remaining_amount_paise": remaining
+    }
+
+
+def get_booking_or_404(booking_ref: str) -> Dict[str, Any]:
+    require_mongo()
+    booking = bookings_collection.find_one({"booking_ref": booking_ref.strip()})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+    return booking
+
+
+def recalc_and_update_booking(booking_ref: str) -> Dict[str, Any]:
+    booking = get_booking_or_404(booking_ref)
+    payment_items = list(payments_collection.find({
+        "booking_ref": booking_ref,
+        "status": "paid"
+    }))
+
+    paid_total = sum(int(x.get("amount_paise", 0)) for x in payment_items)
+    total_amount = int(booking.get("total_amount_paise", 0))
+    money = compute_financials(total_amount, paid_total)
+
+    payment_status = "pending"
+    booking_status = booking.get("booking_status", "pending_payment")
+
+    if paid_total > 0 and money["remaining_amount_paise"] > 0:
+        payment_status = "partially_paid"
+        booking_status = "advance_paid"
+    if money["remaining_amount_paise"] == 0 and total_amount > 0:
+        payment_status = "fully_paid"
+        booking_status = "confirmed"
+
+    update_data = {
+        **money,
+        "payment_status": payment_status,
+        "booking_status": booking_status,
+        "updated_at": utc_now()
+    }
+
+    bookings_collection.update_one({"_id": booking["_id"]}, {"$set": update_data})
+    return serialize_doc(bookings_collection.find_one({"_id": booking["_id"]}))
 
 
 # =========================
@@ -332,7 +349,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "4.1.0"
+        "version": "5.0.0"
     }
 
 
@@ -376,71 +393,51 @@ def create_lead(payload: LeadIn):
 
 
 # =========================
-# AI ITINERARY GENERATION
+# AI ITINERARY
 # =========================
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: ItineraryIn):
     if not openai_client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
-
     if not payload.destination:
         raise HTTPException(status_code=400, detail="Destination is required.")
-
-    prompt = build_itinerary_prompt(payload)
 
     try:
         response = openai_client.responses.create(
             model="gpt-5-mini",
-            input=prompt
+            input=build_itinerary_prompt(payload)
         )
-
         text = response.output_text.strip() if hasattr(response, "output_text") else ""
         if not text:
             raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary.")
 
-        return {
-            "ok": True,
-            "itinerary": text
-        }
-
+        return {"ok": True, "itinerary": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary generation failed: {str(e)}")
 
 
-# =========================
-# AI ITINERARY CHAT UPDATE
-# =========================
 @app.post("/api/ai/chat")
 def update_itinerary(payload: ChatUpdateIn):
     if not openai_client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
-
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message is required.")
     if not payload.itinerary.strip():
         raise HTTPException(status_code=400, detail="Current itinerary is required.")
 
-    prompt = build_chat_update_prompt(
-        user_message=payload.message,
-        itinerary=payload.itinerary,
-        context=payload.context
-    )
-
     try:
         response = openai_client.responses.create(
             model="gpt-5-mini",
-            input=prompt
+            input=build_chat_update_prompt(
+                user_message=payload.message,
+                itinerary=payload.itinerary,
+                context=payload.context
+            )
         )
-
         text = response.output_text.strip() if hasattr(response, "output_text") else ""
         if not text:
             raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary.")
-
-        return {
-            "ok": True,
-            "itinerary": text
-        }
-
+        return {"ok": True, "itinerary": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary update failed: {str(e)}")
 
@@ -454,12 +451,7 @@ def support_chat(payload: SupportChatIn):
     if not user_message:
         raise HTTPException(status_code=400, detail="Message is required.")
 
-    fallback = (
-        "Please share your issue clearly. "
-        "For urgent help, contact WhatsApp: +91 97972 94747."
-    )
-
-    reply = fallback
+    reply = "Please share your issue clearly. For urgent help, contact WhatsApp: +91 97972 94747."
 
     if openai_client:
         try:
@@ -471,19 +463,16 @@ def support_chat(payload: SupportChatIn):
             if text:
                 reply = text
         except Exception:
-            reply = fallback
+            pass
 
     if support_logs_collection is not None:
         support_logs_collection.insert_one({
             "message": user_message,
             "reply": reply,
-            "created_at": utc_now(),
+            "created_at": utc_now()
         })
 
-    return {
-        "ok": True,
-        "reply": reply
-    }
+    return {"ok": True, "reply": reply}
 
 
 # =========================
@@ -493,35 +482,37 @@ def support_chat(payload: SupportChatIn):
 def payment_config():
     if not RAZORPAY_KEY_ID:
         raise HTTPException(status_code=500, detail="RAZORPAY_KEY_ID is missing in Render environment.")
-
-    return {
-        "ok": True,
-        "razorpayKeyId": RAZORPAY_KEY_ID
-    }
+    return {"ok": True, "razorpayKeyId": RAZORPAY_KEY_ID}
 
 
 # =========================
-# CREATE RAZORPAY ORDER
+# CREATE ADVANCE ORDER
 # =========================
 @app.post("/api/payment/create-order")
 def create_order(payload: CreateOrderIn):
     if not razorpay_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
-
     require_mongo()
 
     try:
+        notes = payload.notes or {}
         order_data = {
             "amount": payload.amount,
             "currency": payload.currency,
             "receipt": payload.receipt,
-            "notes": payload.notes or {},
+            "notes": notes,
         }
-
         order = razorpay_client.order.create(data=order_data)
 
-        notes = payload.notes or {}
         booking_ref = notes.get("booking_ref") or payload.receipt or build_booking_ref()
+
+        total_amount_paise = safe_int(notes.get("total_amount_paise"), 0)
+        if total_amount_paise <= 0:
+            # fallback if frontend didn't send total
+            total_amount_paise = payload.amount * 5
+
+        money = compute_financials(total_amount_paise, 0)
+        schedule = build_schedule_fields(notes.get("start_date", ""))
 
         booking_doc = {
             "booking_ref": booking_ref,
@@ -529,6 +520,8 @@ def create_order(payload: CreateOrderIn):
             "phone": normalize_phone(notes.get("customer_phone", "")),
             "email": notes.get("customer_email", ""),
             "destination": notes.get("destination", ""),
+            "start_point": notes.get("start_point", ""),
+            "end_point": notes.get("end_point", ""),
             "start_date": notes.get("start_date", ""),
             "end_date": notes.get("end_date", ""),
             "days": notes.get("days", ""),
@@ -538,24 +531,26 @@ def create_order(payload: CreateOrderIn):
             "vehicle": notes.get("vehicle", ""),
             "guide": notes.get("guide", ""),
             "places": [x.strip() for x in notes.get("places", "").split(",")] if notes.get("places") else [],
-            "notes": notes,
             "itinerary": notes.get("itinerary", ""),
-            "payment_status": "created",
-            "booking_status": "pending_payment",
-            "advance_amount_paise": payload.amount,
             "currency": payload.currency,
+            "advance_amount_paise": payload.amount,
+            **money,
+            **schedule,
+            "payment_status": "pending",
+            "booking_status": "pending_payment",
+            "can_custom_pay": True,
             "razorpay_order_id": order.get("id", ""),
             "razorpay_payment_id": "",
+            "last_balance_order_id": "",
+            "last_balance_payment_id": "",
+            "cancel_reason": "",
             "created_at": utc_now(),
             "updated_at": utc_now(),
         }
 
         existing = bookings_collection.find_one({"booking_ref": booking_ref})
         if existing:
-            bookings_collection.update_one(
-                {"_id": existing["_id"]},
-                {"$set": booking_doc}
-            )
+            bookings_collection.update_one({"_id": existing["_id"]}, {"$set": booking_doc})
         else:
             bookings_collection.insert_one(booking_doc)
 
@@ -571,13 +566,12 @@ def create_order(payload: CreateOrderIn):
 
 
 # =========================
-# VERIFY PAYMENT + SAVE BOOKING
+# VERIFY ADVANCE PAYMENT
 # =========================
 @app.post("/api/payment/verify")
 def verify_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
         raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
-
     require_mongo()
 
     is_valid = verify_razorpay_signature(
@@ -585,50 +579,201 @@ def verify_payment(payload: VerifyPaymentIn):
         payment_id=payload.razorpay_payment_id,
         signature=payload.razorpay_signature
     )
-
     if not is_valid:
         raise HTTPException(status_code=400, detail="Invalid payment signature.")
 
-    booking = make_booking_from_payment(
-        order_id=payload.razorpay_order_id,
-        payment_id=payload.razorpay_payment_id
-    )
+    booking = bookings_collection.find_one({"razorpay_order_id": payload.razorpay_order_id})
 
-    payment_doc = {
-        "booking_ref": booking.get("booking_ref", ""),
-        "phone": booking.get("phone", ""),
-        "email": booking.get("email", ""),
-        "amount_paise": booking.get("advance_amount_paise", 0),
-        "currency": booking.get("currency", "INR"),
-        "status": "paid",
-        "razorpay_order_id": payload.razorpay_order_id,
-        "razorpay_payment_id": payload.razorpay_payment_id,
-        "created_at": utc_now(),
-    }
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found for this payment.")
 
-    existing_payment = payments_collection.find_one(
-        {"razorpay_payment_id": payload.razorpay_payment_id}
-    )
+    existing_payment = payments_collection.find_one({"razorpay_payment_id": payload.razorpay_payment_id})
     if not existing_payment:
-        payments_collection.insert_one(payment_doc)
+        payments_collection.insert_one({
+            "booking_ref": booking.get("booking_ref", ""),
+            "phone": booking.get("phone", ""),
+            "email": booking.get("email", ""),
+            "amount_paise": int(booking.get("advance_amount_paise", 0)),
+            "currency": booking.get("currency", "INR"),
+            "status": "paid",
+            "payment_type": "advance",
+            "razorpay_order_id": payload.razorpay_order_id,
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "created_at": utc_now(),
+        })
+
+    bookings_collection.update_one(
+        {"_id": booking["_id"]},
+        {"$set": {
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "updated_at": utc_now()
+        }}
+    )
+
+    updated = recalc_and_update_booking(booking["booking_ref"])
 
     return {
         "ok": True,
         "message": "Payment verified successfully.",
-        "booking_ref": booking.get("booking_ref", ""),
-        "booking_status": booking.get("booking_status", "received"),
-        "payment_status": booking.get("payment_status", "paid")
+        "booking_ref": updated.get("booking_ref", ""),
+        "booking_status": updated.get("booking_status", ""),
+        "payment_status": updated.get("payment_status", ""),
+        "remaining_amount_paise": updated.get("remaining_amount_paise", 0),
+        "full_payment_due_date": updated.get("full_payment_due_date", ""),
+        "cancellable_until": updated.get("cancellable_until", ""),
+        "can_cancel": updated.get("can_cancel", False)
     }
 
 
 # =========================
-# BOOKING STATUS
+# CREATE BALANCE / CUSTOM ORDER
 # =========================
-@app.get("/api/booking-status")
-def booking_status(
+@app.post("/api/payment/create-balance-order")
+def create_balance_order(payload: CreateBalanceOrderIn):
+    if not razorpay_client:
+        raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
+    require_mongo()
+
+    booking = get_booking_or_404(payload.booking_ref)
+    booking = recalc_and_update_booking(payload.booking_ref)
+
+    if booking.get("booking_status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Cancelled booking cannot accept payment.")
+
+    remaining = int(booking.get("remaining_amount_paise", 0))
+    if remaining <= 0:
+        raise HTTPException(status_code=400, detail="No remaining balance to pay.")
+
+    if payload.amount_paise > remaining:
+        raise HTTPException(status_code=400, detail="Custom amount cannot exceed remaining balance.")
+
+    min_amount = 100000  # ₹1000
+    if payload.amount_paise < min_amount:
+        raise HTTPException(status_code=400, detail="Minimum custom payment is ₹1,000.")
+
+    if payload.payment_type not in ["balance_full", "custom_partial"]:
+        raise HTTPException(status_code=400, detail="Invalid payment type.")
+
+    if payload.payment_type == "balance_full":
+        pay_amount = remaining
+    else:
+        pay_amount = payload.amount_paise
+
+    receipt = f"{payload.booking_ref}-BAL-{datetime.now().strftime('%H%M%S')}"
+
+    order_data = {
+        "amount": pay_amount,
+        "currency": booking.get("currency", "INR"),
+        "receipt": receipt,
+        "notes": {
+            "booking_ref": payload.booking_ref,
+            "customer_name": booking.get("customer_name", ""),
+            "customer_phone": booking.get("phone", ""),
+            "customer_email": booking.get("email", ""),
+            "destination": booking.get("destination", ""),
+            "payment_type": payload.payment_type
+        },
+    }
+
+    try:
+        order = razorpay_client.order.create(data=order_data)
+
+        bookings_collection.update_one(
+            {"booking_ref": payload.booking_ref},
+            {"$set": {
+                "last_balance_order_id": order.get("id", ""),
+                "updated_at": utc_now()
+            }}
+        )
+
+        return {
+            "ok": True,
+            "key": RAZORPAY_KEY_ID,
+            "order": order,
+            "booking_ref": payload.booking_ref,
+            "payment_type": payload.payment_type,
+            "remaining_amount_paise": remaining
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Balance payment order creation failed: {str(e)}")
+
+
+# =========================
+# VERIFY BALANCE / CUSTOM PAYMENT
+# =========================
+@app.post("/api/payment/verify-balance")
+def verify_balance_payment(payload: VerifyPaymentIn):
+    if not RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
+    require_mongo()
+
+    is_valid = verify_razorpay_signature(
+        order_id=payload.razorpay_order_id,
+        payment_id=payload.razorpay_payment_id,
+        signature=payload.razorpay_signature
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid payment signature.")
+
+    booking = bookings_collection.find_one({"last_balance_order_id": payload.razorpay_order_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found for balance payment.")
+
+    existing_payment = payments_collection.find_one({"razorpay_payment_id": payload.razorpay_payment_id})
+    if not existing_payment:
+        try:
+            payment_info = razorpay_client.payment.fetch(payload.razorpay_payment_id)
+            paid_amount = int(payment_info.get("amount", 0))
+        except Exception:
+            paid_amount = 0
+
+        payment_type = "custom_partial"
+        remaining_before = int(booking.get("remaining_amount_paise", 0))
+        if paid_amount >= remaining_before and remaining_before > 0:
+            payment_type = "balance_full"
+
+        payments_collection.insert_one({
+            "booking_ref": booking.get("booking_ref", ""),
+            "phone": booking.get("phone", ""),
+            "email": booking.get("email", ""),
+            "amount_paise": paid_amount,
+            "currency": booking.get("currency", "INR"),
+            "status": "paid",
+            "payment_type": payment_type,
+            "razorpay_order_id": payload.razorpay_order_id,
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "created_at": utc_now(),
+        })
+
+    bookings_collection.update_one(
+        {"_id": booking["_id"]},
+        {"$set": {
+            "last_balance_payment_id": payload.razorpay_payment_id,
+            "updated_at": utc_now()
+        }}
+    )
+
+    updated = recalc_and_update_booking(booking["booking_ref"])
+
+    return {
+        "ok": True,
+        "message": "Balance payment verified successfully.",
+        "booking_ref": updated.get("booking_ref", ""),
+        "booking_status": updated.get("booking_status", ""),
+        "payment_status": updated.get("payment_status", ""),
+        "paid_amount_paise": updated.get("paid_amount_paise", 0),
+        "remaining_amount_paise": updated.get("remaining_amount_paise", 0)
+    }
+
+
+# =========================
+# ORDER LOOKUP
+# =========================
+@app.get("/api/orders")
+def get_orders(
     phone: str = "",
-    booking_ref: str = "",
-    email: str = ""
+    email: str = "",
+    booking_ref: str = ""
 ):
     require_mongo()
 
@@ -643,12 +788,58 @@ def booking_status(
     else:
         raise HTTPException(status_code=400, detail="Provide booking_ref or phone or email.")
 
-    items = list(
-        bookings_collection.find(query).sort("created_at", -1)
-    )
-
+    items = list(bookings_collection.find(query).sort("created_at", -1))
     return {
         "ok": True,
         "count": len(items),
-        "bookings": [serialize_booking(x) for x in items]
+        "orders": [serialize_doc(x) for x in items]
+    }
+
+
+@app.get("/api/orders/{booking_ref}")
+def get_order_details(booking_ref: str):
+    booking = get_booking_or_404(booking_ref)
+    updated = recalc_and_update_booking(booking_ref)
+
+    payments = list(payments_collection.find({"booking_ref": booking_ref}).sort("created_at", 1))
+    return {
+        "ok": True,
+        "order": updated,
+        "payments": [serialize_doc(x) for x in payments]
+    }
+
+
+# =========================
+# CANCEL BOOKING
+# =========================
+@app.post("/api/orders/cancel")
+def cancel_booking(payload: CancelBookingIn):
+    require_mongo()
+
+    booking = get_booking_or_404(payload.booking_ref)
+    booking = recalc_and_update_booking(payload.booking_ref)
+
+    if booking.get("booking_status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Booking is already cancelled.")
+
+    if not booking.get("can_cancel", False):
+        raise HTTPException(
+            status_code=400,
+            detail="Online cancellation is allowed only up to 7 days before trip start."
+        )
+
+    bookings_collection.update_one(
+        {"booking_ref": payload.booking_ref},
+        {"$set": {
+            "booking_status": "cancelled",
+            "cancel_reason": payload.reason.strip(),
+            "updated_at": utc_now()
+        }}
+    )
+
+    updated = bookings_collection.find_one({"booking_ref": payload.booking_ref})
+    return {
+        "ok": True,
+        "message": "Booking cancelled successfully.",
+        "order": serialize_doc(updated)
     }
