@@ -2,7 +2,7 @@ import os
 import hmac
 import hashlib
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +19,7 @@ from pymongo.collection import Collection
 # =========================
 app = FastAPI(
     title="HKE Backend – AI Trip Planner, Payments & Bookings",
-    version="4.0.0"
+    version="4.1.0"
 )
 
 app.add_middleware(
@@ -60,10 +60,18 @@ leads_collection: Optional[Collection] = None
 bookings_collection: Optional[Collection] = None
 payments_collection: Optional[Collection] = None
 support_logs_collection: Optional[Collection] = None
+mongo_error_message = ""
 
 if MONGO_URI:
     try:
-        mongo_client = MongoClient(MONGO_URI)
+        mongo_client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=10000
+        )
+
+        # force real connection
+        mongo_client.admin.command("ping")
+
         db = mongo_client["hke_db"]
         leads_collection = db["leads"]
         bookings_collection = db["bookings"]
@@ -73,10 +81,14 @@ if MONGO_URI:
         bookings_collection.create_index("booking_ref", unique=True)
         bookings_collection.create_index("phone")
         bookings_collection.create_index("email")
+        bookings_collection.create_index("razorpay_order_id")
         payments_collection.create_index("razorpay_payment_id", unique=True)
         payments_collection.create_index("razorpay_order_id")
+
         print("MongoDB connected successfully.")
+
     except Exception as e:
+        mongo_error_message = str(e)
         print(f"WARNING: MongoDB connection failed: {e}")
         mongo_client = None
         db = None
@@ -136,24 +148,11 @@ class SupportChatIn(BaseModel):
     message: str
 
 
-class BookingStatusQuery(BaseModel):
-    phone: Optional[str] = ""
-    booking_ref: Optional[str] = ""
-    email: Optional[str] = ""
-
-
 # =========================
 # HELPERS
 # =========================
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def safe_int(value: Any, default: int = 1) -> int:
-    try:
-        return int(str(value).strip())
-    except Exception:
-        return default
 
 
 def normalize_phone(phone: str) -> str:
@@ -171,7 +170,10 @@ def build_booking_ref() -> str:
 
 def require_mongo() -> None:
     if bookings_collection is None or payments_collection is None:
-        raise HTTPException(status_code=500, detail="MongoDB is not configured in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="MongoDB is configured but connection failed. Check MONGO_URI, Atlas IP access, username, password, and cluster hostname."
+        )
 
 
 def build_itinerary_prompt(data: ItineraryIn) -> str:
@@ -275,10 +277,11 @@ def find_booking_by_order_id(order_id: str) -> Optional[Dict[str, Any]]:
 
 def make_booking_from_payment(order_id: str, payment_id: str) -> Dict[str, Any]:
     existing = find_booking_by_order_id(order_id)
+
     if existing:
         update_data = {
             "payment_status": "paid",
-            "booking_status": existing.get("booking_status", "received"),
+            "booking_status": "received",
             "razorpay_payment_id": payment_id,
             "updated_at": utc_now(),
         }
@@ -289,7 +292,6 @@ def make_booking_from_payment(order_id: str, payment_id: str) -> Dict[str, Any]:
         updated = bookings_collection.find_one({"_id": existing["_id"]})
         return serialize_booking(updated)
 
-    # fallback if booking was not created at order stage
     booking_ref = build_booking_ref()
     booking_doc = {
         "booking_ref": booking_ref,
@@ -330,7 +332,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "4.0.0"
+        "version": "4.1.0"
     }
 
 
@@ -342,6 +344,7 @@ def health():
         "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET),
         "mongo_configured": bool(MONGO_URI),
         "mongo_connected": bool(bookings_collection is not None),
+        "mongo_error": mongo_error_message if mongo_error_message else ""
     }
 
 
@@ -534,7 +537,7 @@ def create_order(payload: CreateOrderIn):
             "hotel_class": notes.get("hotel_class", ""),
             "vehicle": notes.get("vehicle", ""),
             "guide": notes.get("guide", ""),
-            "places": notes.get("places", "").split(",") if notes.get("places") else [],
+            "places": [x.strip() for x in notes.get("places", "").split(",")] if notes.get("places") else [],
             "notes": notes,
             "itinerary": notes.get("itinerary", ""),
             "payment_status": "created",
