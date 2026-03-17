@@ -21,12 +21,12 @@ from twilio.rest import Client as TwilioClient
 # =========================
 app = FastAPI(
     title="HKE Backend – Hybrid OTP, Orders, Payments & Bookings",
-    version="7.0.0"
+    version="7.1.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later restrict to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,10 +41,11 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 
-# MSG91 DIRECT OTP
+# MSG91
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEOTP").strip()
 MSG91_OTP_EXPIRY = int(os.getenv("MSG91_OTP_EXPIRY", "10").strip() or "10")
+MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID", "").strip()  # optional, if your account uses template-based OTP
 
 # TWILIO VERIFY
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
@@ -152,7 +153,7 @@ class VerifyPaymentIn(BaseModel):
 class CreateBalanceOrderIn(BaseModel):
     booking_ref: str
     amount_paise: int = Field(..., gt=0)
-    payment_type: str = Field(default="custom_partial")  # balance_full / custom_partial
+    payment_type: str = Field(default="custom_partial")
 
 
 class CancelBookingIn(BaseModel):
@@ -438,7 +439,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "7.0.0"
+        "version": "7.1.0"
     }
 
 
@@ -451,6 +452,7 @@ def health():
         "mongo_configured": bool(MONGO_URI),
         "mongo_connected": bool(bookings_collection is not None),
         "msg91_configured": bool(MSG91_AUTH_KEY),
+        "msg91_template_configured": bool(MSG91_TEMPLATE_ID),
         "twilio_verify_configured": bool(
             TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID
         ),
@@ -460,7 +462,7 @@ def health():
 
 # =========================
 # OTP AUTH (HYBRID)
-# INDIA -> MSG91 DIRECT OTP
+# INDIA -> MSG91
 # INTERNATIONAL -> TWILIO VERIFY
 # =========================
 @app.post("/api/auth/send-otp")
@@ -471,30 +473,41 @@ def send_otp(payload: SendOtpIn):
         require_msg91()
 
         mobile = to_india_msg91_number(payload.phone)
-        url = "https://api.msg91.com/api/sendotp.php"
 
-        params = {
+        # Prefer MSG91 v5 OTP endpoint
+        url = "https://control.msg91.com/api/v5/otp"
+
+        headers = {
             "authkey": MSG91_AUTH_KEY,
-            "mobile": mobile,
-            "message": "Your OTP for Himalayan Kerala Expeditions is ##OTP##. Do not share it with anyone.",
-            "sender": MSG91_SENDER_ID,
-            "otp_expiry": MSG91_OTP_EXPIRY,
-            "otp_length": 6,
+            "Content-Type": "application/json"
         }
 
+        body: Dict[str, Any] = {
+            "mobile": mobile,
+            "otp_expiry": MSG91_OTP_EXPIRY
+        }
+
+        # If template ID is configured, use it
+        if MSG91_TEMPLATE_ID:
+            body["template_id"] = MSG91_TEMPLATE_ID
+
         try:
-            r = requests.post(url, params=params, timeout=20)
+            r = requests.post(url, json=body, headers=headers, timeout=20)
 
             try:
                 data = r.json()
             except Exception:
                 data = {"raw": r.text}
 
+            print("MSG91 SEND RESPONSE:", data)
+            print("MSG91 STATUS CODE:", r.status_code)
+            print("MSG91 RAW TEXT:", r.text)
+
             if r.status_code >= 400:
                 raise HTTPException(status_code=500, detail=f"MSG91 OTP failed: {data}")
 
             response_type = str(data.get("type", "")).lower()
-            if response_type != "success":
+            if response_type not in ["success"]:
                 raise HTTPException(status_code=500, detail=f"MSG91 OTP failed: {data}")
 
             if otp_logs_collection is not None:
@@ -511,7 +524,7 @@ def send_otp(payload: SendOtpIn):
             return {
                 "ok": True,
                 "provider": "MSG91",
-                "message": "OTP sent successfully."
+                "message": "OTP request accepted."
             }
 
         except HTTPException:
@@ -565,26 +578,31 @@ def verify_otp(payload: VerifyOtpIn):
         mobile = to_india_msg91_number(payload.phone)
         url = "https://control.msg91.com/api/v5/otp/verify"
 
-        params = {
+        body = {
             "otp": otp,
             "mobile": mobile
         }
 
         headers = {
-            "authkey": MSG91_AUTH_KEY
+            "authkey": MSG91_AUTH_KEY,
+            "Content-Type": "application/json"
         }
 
         try:
-            r = requests.post(url, json=params, headers=headers, timeout=20)
+            r = requests.post(url, json=body, headers=headers, timeout=20)
 
             try:
                 data = r.json()
             except Exception:
                 data = {"raw": r.text}
 
+            print("MSG91 VERIFY RESPONSE:", data)
+            print("MSG91 VERIFY STATUS CODE:", r.status_code)
+            print("MSG91 VERIFY RAW TEXT:", r.text)
+
             success = str(data.get("type", "")).lower() == "success"
             if not success:
-                raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+                raise HTTPException(status_code=400, detail=f"Invalid or expired OTP. Provider response: {data}")
 
             phone_normal = normalize_phone(payload.phone)
             orders = list(bookings_collection.find({"phone": phone_normal}).sort("created_at", -1))
