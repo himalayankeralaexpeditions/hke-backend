@@ -88,8 +88,10 @@ if MONGO_URI:
         bookings_collection.create_index("razorpay_order_id")
         payments_collection.create_index("razorpay_payment_id", unique=True)
         payments_collection.create_index("razorpay_order_id")
-        otp_logs_collection.create_index("phone")
-        otp_logs_collection.create_index("created_at")
+
+        if otp_logs_collection is not None:
+            otp_logs_collection.create_index("phone")
+            otp_logs_collection.create_index("created_at")
 
         print("MongoDB connected successfully.")
     except Exception as e:
@@ -255,7 +257,7 @@ def require_msg91() -> None:
     if not MSG91_AUTH_KEY:
         raise HTTPException(
             status_code=500,
-            detail="MSG91 is not configured in Render environment."
+            detail="MSG91 is not configured in environment."
         )
 
 
@@ -263,7 +265,7 @@ def require_twilio_verify() -> None:
     if not twilio_client or not TWILIO_VERIFY_SERVICE_SID:
         raise HTTPException(
             status_code=500,
-            detail="Twilio Verify is not configured in Render environment."
+            detail="Twilio Verify is not configured in environment."
         )
 
 
@@ -469,8 +471,6 @@ def send_otp(payload: SendOtpIn):
         require_msg91()
 
         mobile = to_india_msg91_number(payload.phone)
-
-        # MSG91 direct OTP API
         url = "https://api.msg91.com/api/sendotp.php"
 
         params = {
@@ -563,8 +563,6 @@ def verify_otp(payload: VerifyOtpIn):
         require_msg91()
 
         mobile = to_india_msg91_number(payload.phone)
-
-        # MSG91 verify OTP API
         url = "https://control.msg91.com/api/v5/otp/verify"
 
         params = {
@@ -692,7 +690,7 @@ def generate_itinerary(payload: ItineraryIn):
     if not openai_client:
         raise HTTPException(
             status_code=500,
-            detail="OPENAI_API_KEY is missing in Render environment."
+            detail="OPENAI_API_KEY is missing in environment."
         )
     if not payload.destination:
         raise HTTPException(status_code=400, detail="Destination is required.")
@@ -717,7 +715,7 @@ def update_itinerary(payload: ChatUpdateIn):
     if not openai_client:
         raise HTTPException(
             status_code=500,
-            detail="OPENAI_API_KEY is missing in Render environment."
+            detail="OPENAI_API_KEY is missing in environment."
         )
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message is required.")
@@ -787,7 +785,7 @@ def payment_config():
     if not RAZORPAY_KEY_ID:
         raise HTTPException(
             status_code=500,
-            detail="RAZORPAY_KEY_ID is missing in Render environment."
+            detail="RAZORPAY_KEY_ID is missing in environment."
         )
     return {"ok": True, "razorpayKeyId": RAZORPAY_KEY_ID}
 
@@ -800,7 +798,7 @@ def create_order(payload: CreateOrderIn):
     if not razorpay_client:
         raise HTTPException(
             status_code=500,
-            detail="Razorpay is not configured in Render environment."
+            detail="Razorpay is not configured in environment."
         )
     require_mongo()
 
@@ -882,7 +880,7 @@ def verify_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
         raise HTTPException(
             status_code=500,
-            detail="RAZORPAY_KEY_SECRET is missing in Render environment."
+            detail="RAZORPAY_KEY_SECRET is missing in environment."
         )
     require_mongo()
 
@@ -944,7 +942,7 @@ def create_balance_order(payload: CreateBalanceOrderIn):
     if not razorpay_client:
         raise HTTPException(
             status_code=500,
-            detail="Razorpay is not configured in Render environment."
+            detail="Razorpay is not configured in environment."
         )
     require_mongo()
 
@@ -1016,7 +1014,7 @@ def verify_balance_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
         raise HTTPException(
             status_code=500,
-            detail="RAZORPAY_KEY_SECRET is missing in Render environment."
+            detail="RAZORPAY_KEY_SECRET is missing in environment."
         )
     require_mongo()
 
