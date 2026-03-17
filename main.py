@@ -21,12 +21,12 @@ from twilio.rest import Client as TwilioClient
 # =========================
 app = FastAPI(
     title="HKE Backend – Hybrid OTP, Orders, Payments & Bookings",
-    version="6.0.0"
+    version="7.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # later restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,16 +41,25 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 
+# MSG91 DIRECT OTP
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
-MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID", "").strip()
+MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEOTP").strip()
+MSG91_OTP_EXPIRY = int(os.getenv("MSG91_OTP_EXPIRY", "10").strip() or "10")
 
+# TWILIO VERIFY
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_VERIFY_SERVICE_SID = os.getenv("TWILIO_VERIFY_SERVICE_SID", "").strip()
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
-twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
+razorpay_client = (
+    razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
+)
+twilio_client = (
+    TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
+)
 
 mongo_client = None
 db = None
@@ -79,6 +88,8 @@ if MONGO_URI:
         bookings_collection.create_index("razorpay_order_id")
         payments_collection.create_index("razorpay_payment_id", unique=True)
         payments_collection.create_index("razorpay_order_id")
+        otp_logs_collection.create_index("phone")
+        otp_logs_collection.create_index("created_at")
 
         print("MongoDB connected successfully.")
     except Exception as e:
@@ -195,7 +206,10 @@ def is_india_number(phone: str) -> bool:
 def to_india_msg91_number(phone: str) -> str:
     digits = normalize_phone(phone)
     if len(digits) != 10:
-        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit Indian mobile number.")
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a valid 10-digit Indian mobile number."
+        )
     return "91" + digits
 
 
@@ -203,11 +217,14 @@ def to_twilio_phone(phone: str) -> str:
     raw = str(phone or "").strip()
     if raw.startswith("+"):
         return raw
+
     digits = "".join(ch for ch in raw if ch.isdigit())
+
     if digits.startswith("91") and len(digits) >= 12:
         return "+" + digits
     if len(digits) == 10:
         return "+91" + digits
+
     return "+" + digits
 
 
@@ -235,13 +252,19 @@ def require_mongo() -> None:
 
 
 def require_msg91() -> None:
-    if not MSG91_AUTH_KEY or not MSG91_TEMPLATE_ID:
-        raise HTTPException(status_code=500, detail="MSG91 is not configured in Render environment.")
+    if not MSG91_AUTH_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="MSG91 is not configured in Render environment."
+        )
 
 
 def require_twilio_verify() -> None:
     if not twilio_client or not TWILIO_VERIFY_SERVICE_SID:
-        raise HTTPException(status_code=500, detail="Twilio Verify is not configured in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="Twilio Verify is not configured in Render environment."
+        )
 
 
 def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
@@ -413,7 +436,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "6.0.0"
+        "version": "7.0.0"
     }
 
 
@@ -425,14 +448,18 @@ def health():
         "razorpay_configured": bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET),
         "mongo_configured": bool(MONGO_URI),
         "mongo_connected": bool(bookings_collection is not None),
-        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_TEMPLATE_ID),
-        "twilio_verify_configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID),
+        "msg91_configured": bool(MSG91_AUTH_KEY),
+        "twilio_verify_configured": bool(
+            TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID
+        ),
         "mongo_error": mongo_error_message if mongo_error_message else ""
     }
 
 
 # =========================
 # OTP AUTH (HYBRID)
+# INDIA -> MSG91 DIRECT OTP
+# INTERNATIONAL -> TWILIO VERIFY
 # =========================
 @app.post("/api/auth/send-otp")
 def send_otp(payload: SendOtpIn):
@@ -442,23 +469,32 @@ def send_otp(payload: SendOtpIn):
         require_msg91()
 
         mobile = to_india_msg91_number(payload.phone)
-        url = "https://control.msg91.com/api/v5/otp"
 
-        headers = {
+        # MSG91 direct OTP API
+        url = "https://api.msg91.com/api/sendotp.php"
+
+        params = {
             "authkey": MSG91_AUTH_KEY,
-            "Content-Type": "application/json"
-        }
-
-        body = {
-            "template_id": MSG91_TEMPLATE_ID,
-            "mobile": mobile
+            "mobile": mobile,
+            "message": "Your OTP for Himalayan Kerala Expeditions is ##OTP##. Do not share it with anyone.",
+            "sender": MSG91_SENDER_ID,
+            "otp_expiry": MSG91_OTP_EXPIRY,
+            "otp_length": 6,
         }
 
         try:
-            r = requests.post(url, json=body, headers=headers, timeout=20)
-            data = r.json() if r.text else {}
+            r = requests.post(url, params=params, timeout=20)
+
+            try:
+                data = r.json()
+            except Exception:
+                data = {"raw": r.text}
 
             if r.status_code >= 400:
+                raise HTTPException(status_code=500, detail=f"MSG91 OTP failed: {data}")
+
+            response_type = str(data.get("type", "")).lower()
+            if response_type != "success":
                 raise HTTPException(status_code=500, detail=f"MSG91 OTP failed: {data}")
 
             if otp_logs_collection is not None:
@@ -468,6 +504,7 @@ def send_otp(payload: SendOtpIn):
                     "phone_raw": payload.phone,
                     "status": "sent",
                     "type": "send",
+                    "response": data,
                     "created_at": utc_now()
                 })
 
@@ -486,7 +523,9 @@ def send_otp(payload: SendOtpIn):
     phone_twilio = to_twilio_phone(payload.phone)
 
     try:
-        verification = twilio_client.verify.v2.services(TWILIO_VERIFY_SERVICE_SID).verifications.create(
+        verification = twilio_client.verify.v2.services(
+            TWILIO_VERIFY_SERVICE_SID
+        ).verifications.create(
             to=phone_twilio,
             channel="sms"
         )
@@ -524,21 +563,26 @@ def verify_otp(payload: VerifyOtpIn):
         require_msg91()
 
         mobile = to_india_msg91_number(payload.phone)
+
+        # MSG91 verify OTP API
         url = "https://control.msg91.com/api/v5/otp/verify"
 
-        headers = {
-            "authkey": MSG91_AUTH_KEY,
-            "Content-Type": "application/json"
+        params = {
+            "otp": otp,
+            "mobile": mobile
         }
 
-        body = {
-            "mobile": mobile,
-            "otp": otp
+        headers = {
+            "authkey": MSG91_AUTH_KEY
         }
 
         try:
-            r = requests.post(url, json=body, headers=headers, timeout=20)
-            data = r.json() if r.text else {}
+            r = requests.post(url, json=params, headers=headers, timeout=20)
+
+            try:
+                data = r.json()
+            except Exception:
+                data = {"raw": r.text}
 
             success = str(data.get("type", "")).lower() == "success"
             if not success:
@@ -554,6 +598,7 @@ def verify_otp(payload: VerifyOtpIn):
                     "phone_raw": payload.phone,
                     "status": "approved",
                     "type": "verify",
+                    "response": data,
                     "created_at": utc_now()
                 })
 
@@ -574,7 +619,9 @@ def verify_otp(payload: VerifyOtpIn):
     phone_twilio = to_twilio_phone(payload.phone)
 
     try:
-        check = twilio_client.verify.v2.services(TWILIO_VERIFY_SERVICE_SID).verification_checks.create(
+        check = twilio_client.verify.v2.services(
+            TWILIO_VERIFY_SERVICE_SID
+        ).verification_checks.create(
             to=phone_twilio,
             code=otp
         )
@@ -643,7 +690,10 @@ def create_lead(payload: LeadIn):
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: ItineraryIn):
     if not openai_client:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="OPENAI_API_KEY is missing in Render environment."
+        )
     if not payload.destination:
         raise HTTPException(status_code=400, detail="Destination is required.")
 
@@ -655,7 +705,9 @@ def generate_itinerary(payload: ItineraryIn):
         text = response.output_text.strip() if hasattr(response, "output_text") else ""
         if not text:
             raise HTTPException(status_code=500, detail="OpenAI returned empty itinerary.")
+
         return {"ok": True, "itinerary": text}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary generation failed: {str(e)}")
 
@@ -663,7 +715,10 @@ def generate_itinerary(payload: ItineraryIn):
 @app.post("/api/ai/chat")
 def update_itinerary(payload: ChatUpdateIn):
     if not openai_client:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="OPENAI_API_KEY is missing in Render environment."
+        )
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message is required.")
     if not payload.itinerary.strip():
@@ -680,8 +735,13 @@ def update_itinerary(payload: ChatUpdateIn):
         )
         text = response.output_text.strip() if hasattr(response, "output_text") else ""
         if not text:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty updated itinerary.")
+            raise HTTPException(
+                status_code=500,
+                detail="OpenAI returned empty updated itinerary."
+            )
+
         return {"ok": True, "itinerary": text}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Itinerary update failed: {str(e)}")
 
@@ -725,7 +785,10 @@ def support_chat(payload: SupportChatIn):
 @app.get("/api/payment/config")
 def payment_config():
     if not RAZORPAY_KEY_ID:
-        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_ID is missing in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="RAZORPAY_KEY_ID is missing in Render environment."
+        )
     return {"ok": True, "razorpayKeyId": RAZORPAY_KEY_ID}
 
 
@@ -735,7 +798,10 @@ def payment_config():
 @app.post("/api/payment/create-order")
 def create_order(payload: CreateOrderIn):
     if not razorpay_client:
-        raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="Razorpay is not configured in Render environment."
+        )
     require_mongo()
 
     try:
@@ -814,7 +880,10 @@ def create_order(payload: CreateOrderIn):
 @app.post("/api/payment/verify")
 def verify_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="RAZORPAY_KEY_SECRET is missing in Render environment."
+        )
     require_mongo()
 
     is_valid = verify_razorpay_signature(
@@ -873,7 +942,10 @@ def verify_payment(payload: VerifyPaymentIn):
 @app.post("/api/payment/create-balance-order")
 def create_balance_order(payload: CreateBalanceOrderIn):
     if not razorpay_client:
-        raise HTTPException(status_code=500, detail="Razorpay is not configured in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="Razorpay is not configured in Render environment."
+        )
     require_mongo()
 
     booking = recalc_and_update_booking(payload.booking_ref)
@@ -888,7 +960,7 @@ def create_balance_order(payload: CreateBalanceOrderIn):
     if payload.amount_paise > remaining:
         raise HTTPException(status_code=400, detail="Custom amount cannot exceed remaining balance.")
 
-    min_amount = 100000  # ₹1000
+    min_amount = 100000  # ₹1,000
     if payload.amount_paise < min_amount:
         raise HTTPException(status_code=400, detail="Minimum custom payment is ₹1,000.")
 
@@ -931,6 +1003,7 @@ def create_balance_order(payload: CreateBalanceOrderIn):
             "payment_type": payload.payment_type,
             "remaining_amount_paise": remaining
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Balance payment order creation failed: {str(e)}")
 
@@ -941,7 +1014,10 @@ def create_balance_order(payload: CreateBalanceOrderIn):
 @app.post("/api/payment/verify-balance")
 def verify_balance_payment(payload: VerifyPaymentIn):
     if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET is missing in Render environment.")
+        raise HTTPException(
+            status_code=500,
+            detail="RAZORPAY_KEY_SECRET is missing in Render environment."
+        )
     require_mongo()
 
     is_valid = verify_razorpay_signature(
