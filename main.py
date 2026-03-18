@@ -3,6 +3,8 @@ import json
 import re
 import hmac
 import hashlib
+import sqlite3
+from datetime import datetime, timedelta
 from typing import List, Optional, Any, Dict
 
 from fastapi import FastAPI, HTTPException
@@ -14,11 +16,11 @@ import razorpay
 # =========================================================
 # APP
 # =========================================================
-app = FastAPI(title="HKE Backend - AI Planner + Razorpay", version="4.0.0")
+app = FastAPI(title="HKE Backend - AI Planner + Razorpay + Booking Save", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # later restrict to your real domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,8 +35,59 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 
+DB_PATH = os.getenv("DB_PATH", "hke_bookings.db")
+
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 rz_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
+
+# =========================================================
+# DB
+# =========================================================
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        destination TEXT,
+        from_location TEXT,
+        end_point TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        travellers INTEGER,
+        rooms INTEGER,
+        trip_name TEXT,
+        payment_type TEXT,
+        paid_amount REAL,
+        total_amount REAL,
+        remaining_amount REAL,
+        full_payment_deadline TEXT,
+        next_schedule_text TEXT,
+        razorpay_order_id TEXT UNIQUE,
+        razorpay_payment_id TEXT UNIQUE,
+        paid_at TEXT,
+        raw_customer_json TEXT,
+        raw_itinerary_json TEXT,
+        raw_pricing_json TEXT,
+        created_at TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
 
 # =========================================================
 # HELPERS
@@ -42,12 +95,10 @@ rz_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZO
 def clean_phone(value: str) -> str:
     return re.sub(r"\D", "", value or "")[:10]
 
-
 def safe_str(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value).strip()
-
 
 def extract_text_from_response(resp: Any) -> str:
     output_text = getattr(resp, "output_text", None)
@@ -66,7 +117,6 @@ def extract_text_from_response(resp: Any) -> str:
         return "\n".join(parts).strip()
     except Exception:
         return ""
-
 
 def try_parse_json(text: str) -> Optional[dict]:
     if not text:
@@ -90,6 +140,23 @@ def try_parse_json(text: str) -> Optional[dict]:
 
     return None
 
+def call_openai_json(prompt: str) -> dict:
+    if not client:
+        raise RuntimeError("OPENAI_API_KEY not configured")
+
+    resp = client.responses.create(
+        model=OPENAI_MODEL,
+        input=prompt,
+        max_output_tokens=2400
+    )
+
+    text = extract_text_from_response(resp)
+    parsed = try_parse_json(text)
+
+    if not parsed:
+        raise ValueError("Invalid JSON returned by model")
+
+    return parsed
 
 def build_itinerary_prompt(data: dict) -> str:
     return f"""
@@ -137,7 +204,6 @@ Rules:
 - Do not include markdown.
 - Do not include explanation outside JSON.
 """.strip()
-
 
 def build_edit_prompt(current_itinerary: str, instruction: str, customer_details: dict) -> str:
     return f"""
@@ -191,26 +257,6 @@ Rules:
 - Do not include markdown.
 - Do not include explanation outside JSON.
 """.strip()
-
-
-def call_openai_json(prompt: str) -> dict:
-    if not client:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-
-    resp = client.responses.create(
-        model=OPENAI_MODEL,
-        input=prompt,
-        max_output_tokens=2400
-    )
-
-    text = extract_text_from_response(resp)
-    parsed = try_parse_json(text)
-
-    if not parsed:
-        raise ValueError("Invalid JSON returned by model")
-
-    return parsed
-
 
 def fallback_itinerary(data: dict, edit_note: str = "") -> dict:
     places = data.get("places") or ["Local Sightseeing"]
@@ -290,7 +336,6 @@ def fallback_itinerary(data: dict, edit_note: str = "") -> dict:
         "days": day_items
     }
 
-
 def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
     if not RAZORPAY_KEY_SECRET:
         return False
@@ -303,7 +348,6 @@ def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) ->
     ).hexdigest()
 
     return hmac.compare_digest(expected_signature, signature)
-
 
 # =========================================================
 # MODELS
@@ -374,7 +418,6 @@ class PlannerRequest(BaseModel):
             return cleaned
         raise ValueError("At least one tourist place is required")
 
-
 class ChatEditRequest(BaseModel):
     instruction: Optional[str] = ""
     message: Optional[str] = ""
@@ -382,7 +425,6 @@ class ChatEditRequest(BaseModel):
     itinerary: Optional[str] = ""
     customer_details: Optional[Dict[str, Any]] = None
     context: Optional[Dict[str, Any]] = None
-
 
 class RazorpayOrderRequest(BaseModel):
     amount: float = Field(..., gt=0)
@@ -392,7 +434,7 @@ class RazorpayOrderRequest(BaseModel):
     email: EmailStr
     phone: str
     trip_name: str = "HKE Trip Booking"
-    payment_type: str = "advance"  # advance | full | custom
+    payment_type: str = "advance"
 
     @field_validator("phone")
     @classmethod
@@ -402,12 +444,16 @@ class RazorpayOrderRequest(BaseModel):
             raise ValueError("Phone must be 10 digits")
         return digits
 
-
 class RazorpayVerifyRequest(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
 
+class SavePaymentRequest(BaseModel):
+    customer: Dict[str, Any]
+    itinerary: Dict[str, Any]
+    pricing: Dict[str, Any]
+    payment: Dict[str, Any]
 
 # =========================================================
 # ROUTES
@@ -417,9 +463,8 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "4.0.0"
+        "version": "5.0.0"
     }
-
 
 @app.get("/health")
 def health():
@@ -430,7 +475,6 @@ def health():
         "model": OPENAI_MODEL
     }
 
-
 @app.get("/api/payment/config")
 def payment_config():
     return {
@@ -439,26 +483,14 @@ def payment_config():
         "razorpay_enabled": bool(rz_client)
     }
 
-
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: PlannerRequest):
     data = payload.model_dump()
-
     try:
         itinerary = call_openai_json(build_itinerary_prompt(data))
-        return {
-            "ok": True,
-            "source": "openai",
-            "itinerary": itinerary
-        }
+        return {"ok": True, "source": "openai", "itinerary": itinerary}
     except Exception as e:
-        return {
-            "ok": True,
-            "source": "fallback",
-            "warning": str(e),
-            "itinerary": fallback_itinerary(data)
-        }
-
+        return {"ok": True, "source": "fallback", "warning": str(e), "itinerary": fallback_itinerary(data)}
 
 @app.post("/api/ai/chat")
 def edit_itinerary(payload: ChatEditRequest):
@@ -468,19 +500,12 @@ def edit_itinerary(payload: ChatEditRequest):
 
     if not instruction:
         raise HTTPException(status_code=400, detail="Edit instruction is required")
-
     if not current_itinerary:
         raise HTTPException(status_code=400, detail="Current itinerary is required")
 
     try:
-        itinerary = call_openai_json(
-            build_edit_prompt(current_itinerary, instruction, customer_details)
-        )
-        return {
-            "ok": True,
-            "source": "openai",
-            "itinerary": itinerary
-        }
+        itinerary = call_openai_json(build_edit_prompt(current_itinerary, instruction, customer_details))
+        return {"ok": True, "source": "openai", "itinerary": itinerary}
     except Exception as e:
         return {
             "ok": True,
@@ -489,16 +514,12 @@ def edit_itinerary(payload: ChatEditRequest):
             "itinerary": fallback_itinerary(customer_details, edit_note=instruction)
         }
 
-
 @app.post("/api/payment/create-order")
 def create_payment_order(payload: RazorpayOrderRequest):
     if not rz_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured on server")
 
     amount_rupees = float(payload.amount)
-    if amount_rupees <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
-
     amount_paise = int(round(amount_rupees * 100))
     receipt = payload.receipt or f"hke_{payload.payment_type}_{clean_phone(payload.phone)}"
 
@@ -534,7 +555,6 @@ def create_payment_order(payload: RazorpayOrderRequest):
         "payment_type": payload.payment_type
     }
 
-
 @app.post("/api/payment/verify")
 def verify_payment(payload: RazorpayVerifyRequest):
     is_valid = verify_razorpay_signature(
@@ -552,6 +572,91 @@ def verify_payment(payload: RazorpayVerifyRequest):
         "message": "Payment verified successfully"
     }
 
+@app.post("/api/payment/save-confirmation")
+def save_payment_confirmation(payload: SavePaymentRequest):
+    customer = payload.customer or {}
+    itinerary = payload.itinerary or {}
+    pricing = payload.pricing or {}
+    payment = payload.payment or {}
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+        INSERT OR REPLACE INTO payments (
+            customer_name, customer_email, customer_phone,
+            destination, from_location, end_point,
+            start_date, end_date, travellers, rooms,
+            trip_name, payment_type, paid_amount, total_amount,
+            remaining_amount, full_payment_deadline, next_schedule_text,
+            razorpay_order_id, razorpay_payment_id, paid_at,
+            raw_customer_json, raw_itinerary_json, raw_pricing_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            safe_str(customer.get("name")),
+            safe_str(customer.get("email")),
+            clean_phone(safe_str(customer.get("phone"))),
+            safe_str(customer.get("destination")),
+            safe_str(customer.get("fromLocation")),
+            safe_str(customer.get("endPoint")),
+            safe_str(customer.get("startDate")),
+            safe_str(customer.get("endDate")),
+            int(customer.get("travellers", 0) or 0),
+            int(customer.get("rooms", 0) or 0),
+            safe_str(itinerary.get("title")),
+            safe_str(payment.get("paymentType")),
+            float(payment.get("paidAmount", 0) or 0),
+            float(pricing.get("finalFare", 0) or 0),
+            float(payment.get("remainingAmount", 0) or 0),
+            safe_str(payment.get("fullPaymentDeadline")),
+            safe_str(payment.get("nextScheduleText")),
+            safe_str(payment.get("razorpayOrderId")),
+            safe_str(payment.get("razorpayPaymentId")),
+            safe_str(payment.get("paidAt")),
+            json.dumps(customer, ensure_ascii=False),
+            json.dumps(itinerary, ensure_ascii=False),
+            json.dumps(pricing, ensure_ascii=False),
+            datetime.utcnow().isoformat()
+        ))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Unable to save payment confirmation: {str(e)}")
+    finally:
+        conn.close()
+
+    return {"ok": True, "message": "Payment confirmation saved successfully"}
+
+@app.get("/api/payment/by-payment-id/{payment_id}")
+def get_payment_by_payment_id(payment_id: str):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM payments WHERE razorpay_payment_id = ?", (payment_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    return {"ok": True, "payment": dict(row)}
+
+@app.get("/api/payments")
+def list_payments():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, customer_name, customer_phone, destination, trip_name,
+               payment_type, paid_amount, remaining_amount,
+               razorpay_payment_id, paid_at
+        FROM payments
+        ORDER BY id DESC
+        LIMIT 100
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {"ok": True, "items": rows}
 
 if __name__ == "__main__":
     import uvicorn
