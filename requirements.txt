@@ -10,5 +10,4 @@ pymongo
 openai
 requests
 razorpay
-
 twilio
