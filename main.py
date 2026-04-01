@@ -22,8 +22,8 @@ load_dotenv()
 # APP
 # =========================================================
 app = FastAPI(
-    title="HKE Backend - AI Planner + Razorpay + Booking Save",
-    version="7.0.0"
+    title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save",
+    version="8.0.0"
 )
 
 app.add_middleware(
@@ -122,6 +122,20 @@ def safe_str(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
 def extract_text_from_response(resp: Any) -> str:
     output_text = getattr(resp, "output_text", None)
     if isinstance(output_text, str) and output_text.strip():
@@ -171,7 +185,7 @@ def call_openai_json(prompt: str) -> dict:
     resp = client.responses.create(
         model=OPENAI_MODEL,
         input=prompt,
-        max_output_tokens=3800,
+        max_output_tokens=4200,
     )
 
     text = extract_text_from_response(resp)
@@ -583,6 +597,266 @@ def fallback_itinerary(data: dict, edit_note: str = "") -> dict:
     }
 
 
+def build_pilgrimage_prompt(data: dict, pricing: dict) -> str:
+    return f"""
+You are a senior pilgrimage travel executive of Himalayan Kerala Expeditions.
+
+Prepare a premium customer-facing pilgrimage itinerary in polished travel-agency language.
+
+Customer request:
+{json.dumps(data, ensure_ascii=False, indent=2)}
+
+Live pricing inputs:
+{json.dumps(pricing, ensure_ascii=False, indent=2)}
+
+Return ONLY valid JSON in this exact structure:
+{{
+  "title": "string",
+  "summary": "3 to 5 line premium pilgrimage introduction written like a senior travel executive",
+  "meta": {{
+    "destination": "string",
+    "route": "string",
+    "dates": "string",
+    "travellers": "string",
+    "rooms": "string",
+    "tripStyle": "string"
+  }},
+  "extraInfo": {{
+    "budget": "string",
+    "travelType": "string",
+    "hotel": "string",
+    "vehicle": "string",
+    "guide": "string",
+    "food": "string",
+    "style": "string",
+    "notes": "string",
+    "religion": "string"
+  }},
+  "highlights": ["string", "string", "string", "string"],
+  "inclusions": ["string", "string", "string", "string"],
+  "exclusions": ["string", "string", "string", "string"],
+  "terms": ["string", "string", "string", "string"],
+  "pricing": {{
+    "hotelTotal": 0,
+    "vehicleTotal": 0,
+    "foodTotal": 0,
+    "subtotal": 0,
+    "gst": 0,
+    "finalFare": 0,
+    "advanceAmount": 0
+  }},
+  "days": [
+    {{
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "title": "string",
+      "route": "string",
+      "hotel": "string",
+      "meals": "string",
+      "activities": ["string", "string", "string", "string"],
+      "notes": "string"
+    }}
+  ]
+}}
+
+Rules:
+- Write in polished Indian premium travel company style.
+- Sound like an experienced senior pilgrimage travel executive.
+- Keep route practical and region-correct.
+- Mention darshan flow, transfer timing, comfort pacing, meal/rest breaks, and overnight logic.
+- If travelType suggests family or senior citizens, keep the itinerary comfort-oriented.
+- Use the supplied pricing values exactly. Do not invent pricing.
+- Do not include markdown.
+- Do not include explanation outside JSON.
+""".strip()
+
+
+def fallback_pilgrimage_itinerary(data: dict, pricing: dict) -> dict:
+    destination = safe_str(data.get("destination"))
+    from_location = safe_str(data.get("fromLocation"))
+    end_point = safe_str(data.get("endPoint"))
+    start_date = safe_str(data.get("startDate"))
+    end_date = safe_str(data.get("endDate"))
+    days = max(2, safe_int(data.get("days"), 5))
+    places = data.get("places") or [destination]
+
+    day_items = []
+    for i in range(days):
+        p1 = places[i % len(places)]
+        p2 = places[(i + 1) % len(places)]
+        if i == 0:
+            activities = [
+                f"Arrival from {from_location} and comfortable transfer toward {destination} pilgrimage circuit.",
+                f"Check-in and settle according to selected category: {safe_str(data.get('hotelClass'), 'Standard')}.",
+                f"Short evening visit / prayer time at {p1}.",
+                "Rest and prepare for the main pilgrimage movement.",
+                f"Travel assistance planned with {safe_str(data.get('vehicle'), 'SUV')}."
+            ]
+            title = f"Arrival in {destination} and spiritual introduction"
+            route = f"{from_location} → {destination}"
+            hotel = f"{safe_str(data.get('hotelClass'), 'Standard')} stay"
+            meals = "As per arrival timing / package flow"
+            notes = "The first day is kept lighter to maintain comfort and allow smooth acclimatization into the spiritual journey."
+        elif i == days - 1:
+            activities = [
+                f"Morning darshan / spiritual visit at {p1}.",
+                "Spend some peaceful time for prayer and local temple/church surroundings.",
+                f"Checkout and begin departure toward {end_point}.",
+                "Trip concludes with spiritual journey support from HKE."
+            ]
+            title = "Final darshan and departure"
+            route = f"{destination} → {end_point}"
+            hotel = "Checkout day"
+            meals = "Breakfast"
+            notes = "Departure has been kept practical to ensure a smooth end to the pilgrimage."
+        else:
+            activities = [
+                f"Morning darshan / visit at {p1}.",
+                f"Continue pilgrimage movement toward {p2}.",
+                f"Meal / rest planning based on {safe_str(data.get('foodPreference'), 'flexible food preference')}.",
+                "Evening prayer, local spiritual exploration, and overnight stay.",
+                f"Travel assistance planned with {safe_str(data.get('vehicle'), 'SUV')}."
+            ]
+            title = f"{p1} and nearby spiritual circuit"
+            route = f"{destination} local pilgrimage movement"
+            hotel = f"{safe_str(data.get('hotelClass'), 'Standard')} stay"
+            meals = "Breakfast / selected meal support"
+            notes = "The day is paced for a meaningful pilgrimage experience without unnecessary rush."
+
+        day_items.append({
+            "day": i + 1,
+            "date": "",
+            "title": title,
+            "route": route,
+            "hotel": hotel,
+            "meals": meals,
+            "activities": activities,
+            "notes": notes
+        })
+
+    return {
+        "title": f"{safe_str(data.get('religion'), 'Pilgrimage')} Pilgrimage - {destination}",
+        "summary": f"This pilgrimage journey through {destination} has been structured in a premium and practical way to balance darshan priorities, route comfort, and overall travel convenience. The plan is prepared in a customer-ready format to reflect a professionally managed spiritual experience with thoughtful pacing and support.",
+        "meta": {
+            "destination": destination,
+            "route": f"{from_location} → {destination} → {end_point}",
+            "dates": f"{start_date} to {end_date}",
+            "travellers": f"{safe_int(data.get('travellers'), 2)} Travellers",
+            "rooms": f"{safe_int(data.get('rooms'), 1)} Room(s)",
+            "tripStyle": safe_str(data.get("travelType"), "Pilgrimage")
+        },
+        "extraInfo": {
+            "budget": safe_str(data.get("budget"), "Standard"),
+            "travelType": safe_str(data.get("travelType"), "Family"),
+            "hotel": safe_str(data.get("hotelClass"), "Standard"),
+            "vehicle": safe_str(data.get("vehicle"), "SUV"),
+            "guide": safe_str(data.get("guide"), "Without Guide"),
+            "food": safe_str(data.get("foodPreference"), "Flexible"),
+            "style": ", ".join(data.get("travelStyle") or []) or "Comfort focused",
+            "notes": safe_str(data.get("notes"), "No special notes"),
+            "religion": safe_str(data.get("religion"), "Pilgrimage")
+        },
+        "highlights": [
+            f"Well-paced pilgrimage movement across {destination}",
+            "Comfort-oriented darshan flow designed for practical execution",
+            "Professional route support with selected stay and vehicle preference",
+            "Customer-ready premium spiritual travel document"
+        ],
+        "inclusions": [
+            "Accommodation as per selected hotel category",
+            f"Vehicle support by {safe_str(data.get('vehicle'), 'SUV')} as per itinerary movement",
+            "Pilgrimage route planning and coordinated day-wise movement",
+            "Support from Himalayan Kerala Expeditions before and during the journey"
+        ],
+        "exclusions": [
+            "VIP darshan tickets, helicopter, palki, pony, ropeway or special entry fees unless separately confirmed",
+            "Personal expenses, shopping, laundry, tips, and donations",
+            "Travel insurance or emergency medical expenses",
+            "Anything not specifically listed under inclusions"
+        ],
+        "terms": [
+            "Final confirmation remains subject to hotel and transport availability.",
+            "Darshan and local movement timing can be adjusted based on local conditions.",
+            "Seasonal demand may affect final confirmation timing and operational sequence.",
+            "The final service order will be confirmed after booking payment and availability lock."
+        ],
+        "pricing": pricing,
+        "days": day_items
+    }
+
+
+def calculate_pilgrimage_price(data: dict) -> dict:
+    days = max(2, safe_int(data.get("days"), 5))
+    travellers = max(1, safe_int(data.get("travellers"), 2))
+    rooms = max(1, safe_int(data.get("rooms"), 1))
+    hotel_class = safe_str(data.get("hotelClass"), "Standard")
+    vehicle = safe_str(data.get("vehicle"), "SUV")
+    budget = safe_str(data.get("budget"), "Standard")
+    need_food = bool(data.get("needFood"))
+    start_date = safe_str(data.get("startDate"))
+
+    hotel_base_map = {
+        "Budget": 2800,
+        "Standard": 4200,
+        "Deluxe": 5800,
+        "Premium": 7600,
+        "Luxury": 9800,
+        "No Hotel": 0
+    }
+
+    vehicle_daily_map = {
+        "No Cab": 0,
+        "No Cab Required": 0,
+        "Sedan": 3200,
+        "SUV": 4200,
+        "Innova": 4700,
+        "Innova Crysta": 5200,
+        "Tempo Traveller": 7600,
+        "Own Vehicle": 1500,
+        "Bike Rental": 2200
+    }
+
+    budget_factor = {
+        "Budget": 1.00,
+        "Standard": 1.08,
+        "Premium": 1.18,
+        "Luxury": 1.30
+    }
+
+    hotel_per_room_per_night = hotel_base_map.get(hotel_class, 4200)
+    vehicle_per_day = vehicle_daily_map.get(vehicle, 4200)
+    food_per_person_per_day = 650 if need_food else 0
+
+    hotel_total = hotel_per_room_per_night * rooms * max(1, days - 1)
+    vehicle_total = vehicle_per_day * days
+    food_total = food_per_person_per_day * travellers * days
+
+    subtotal = hotel_total + vehicle_total + food_total
+
+    try:
+        month = datetime.fromisoformat(start_date).month if start_date else None
+    except Exception:
+        month = None
+
+    if month in [4, 5, 6, 9, 10, 12]:
+        subtotal = int(round(subtotal * 1.15))
+
+    subtotal = int(round(subtotal * budget_factor.get(budget, 1.08)))
+    gst = int(round(subtotal * 0.05))
+    final_fare = subtotal + gst
+    advance_amount = int(round(final_fare * 0.20))
+
+    return {
+        "hotelTotal": int(hotel_total),
+        "vehicleTotal": int(vehicle_total),
+        "foodTotal": int(food_total),
+        "subtotal": int(subtotal),
+        "gst": int(gst),
+        "finalFare": int(final_fare),
+        "advanceAmount": int(advance_amount)
+    }
+
+
 def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
     if not RAZORPAY_KEY_SECRET:
         return False
@@ -666,6 +940,75 @@ class PlannerRequest(BaseModel):
         raise ValueError("At least one tourist place is required")
 
 
+class PilgrimageRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    religion: str
+    destination: str
+    destinationState: Optional[str] = ""
+    fromLocation: str
+    endPoint: str
+    startDate: str
+    days: int = Field(..., ge=2, le=30)
+    endDate: Optional[str] = ""
+    travellers: int = Field(default=2, ge=1, le=50)
+    rooms: int = Field(default=1, ge=1, le=20)
+    budget: str = "Standard"
+    travelType: str = "Family"
+    hotelClass: str = "Standard"
+    vehicle: str = "SUV"
+    guide: str = "Without Guide"
+    needFood: bool = False
+    foodPreference: Optional[str] = "Flexible"
+    travelStyle: List[str] = Field(default_factory=list)
+    places: List[str] = Field(default_factory=list)
+    notes: Optional[str] = ""
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+    @field_validator("name", "fromLocation", "destination", "religion", "endPoint")
+    @classmethod
+    def validate_required_strings(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("This field is required")
+        return v.strip()
+
+    @field_validator("travelStyle", mode="before")
+    @classmethod
+    def normalize_travel_style(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        return []
+
+    @field_validator("places", mode="before")
+    @classmethod
+    def normalize_places(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            cleaned = [str(x).strip() for x in v if str(x).strip()]
+            if not cleaned:
+                raise ValueError("At least one pilgrimage place is required")
+            return cleaned
+        if isinstance(v, str):
+            cleaned = [x.strip() for x in v.split(",") if x.strip()]
+            if not cleaned:
+                raise ValueError("At least one pilgrimage place is required")
+            return cleaned
+        raise ValueError("At least one pilgrimage place is required")
+
+
 class ChatEditRequest(BaseModel):
     instruction: Optional[str] = ""
     message: Optional[str] = ""
@@ -684,6 +1027,7 @@ class RazorpayOrderRequest(BaseModel):
     phone: str
     trip_name: str = "HKE Trip Booking"
     payment_type: str = "advance"
+    notes: Optional[Dict[str, Any]] = None
 
     @field_validator("phone")
     @classmethod
@@ -714,7 +1058,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "7.0.0"
+        "version": "8.0.0"
     }
 
 
@@ -734,6 +1078,8 @@ def payment_config():
     return {
         "ok": True,
         "razorpay_key_id": RAZORPAY_KEY_ID,
+        "razorpayKeyId": RAZORPAY_KEY_ID,
+        "key": RAZORPAY_KEY_ID,
         "razorpay_enabled": bool(rz_client)
     }
 
@@ -787,13 +1133,59 @@ def edit_itinerary(payload: ChatEditRequest):
         }
 
 
+@app.post("/api/pilgrimage/generate")
+def generate_pilgrimage(payload: PilgrimageRequest):
+    data = payload.model_dump()
+
+    if not data.get("destination"):
+        data["destination"] = data.get("destinationState") or "Pilgrimage"
+
+    if not data.get("endDate"):
+        data["endDate"] = data.get("startDate")
+
+    pricing = calculate_pilgrimage_price(data)
+
+    try:
+        itinerary = call_openai_json(build_pilgrimage_prompt(data, pricing))
+        source = "openai"
+        if "pricing" not in itinerary or not isinstance(itinerary.get("pricing"), dict):
+            itinerary["pricing"] = pricing
+        else:
+            itinerary["pricing"] = pricing
+    except Exception as e:
+        itinerary = fallback_pilgrimage_itinerary(data, pricing)
+        source = "fallback"
+        print(f"Pilgrimage AI fallback used: {e}")
+
+    try:
+        send_itinerary_enquiry_email(data, itinerary)
+    except Exception as email_error:
+        print(f"Failed to send pilgrimage enquiry email: {email_error}")
+
+    return {
+        "ok": True,
+        "source": source,
+        "bookingRef": f"HKE-PIL-{int(datetime.now().timestamp())}",
+        "pricing": pricing,
+        "itinerary": itinerary
+    }
+
+
 @app.post("/api/payment/create-order")
 def create_payment_order(payload: RazorpayOrderRequest):
     if not rz_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured on server")
 
-    amount_rupees = float(payload.amount)
-    amount_paise = int(round(amount_rupees * 100))
+    amount_value = float(payload.amount)
+
+    # support both rupees and paise from old/new frontend
+    if amount_value >= 1000:
+        amount_paise = int(round(amount_value))
+        amount_rupees = round(amount_paise / 100, 2)
+    else:
+        amount_rupees = amount_value
+        amount_paise = int(round(amount_rupees * 100))
+
     receipt = payload.receipt or f"hke_{payload.payment_type}_{clean_phone(payload.phone)}"
 
     notes = {
@@ -803,6 +1195,10 @@ def create_payment_order(payload: RazorpayOrderRequest):
         "trip_name": payload.trip_name,
         "payment_type": payload.payment_type,
     }
+
+    if payload.notes:
+        for k, v in payload.notes.items():
+            notes[str(k)] = safe_str(v)[:255]
 
     try:
         order = rz_client.order.create({
@@ -820,10 +1216,13 @@ def create_payment_order(payload: RazorpayOrderRequest):
 
     return {
         "ok": True,
+        "key": RAZORPAY_KEY_ID,
+        "razorpay_key_id": RAZORPAY_KEY_ID,
+        "razorpayKeyId": RAZORPAY_KEY_ID,
+        "order": order,
         "order_id": order.get("id"),
         "amount": amount_rupees,
         "currency": payload.currency,
-        "razorpay_key_id": RAZORPAY_KEY_ID,
         "name": payload.name,
         "email": payload.email,
         "phone": payload.phone,
@@ -846,6 +1245,9 @@ def verify_payment(payload: RazorpayVerifyRequest):
     return {
         "ok": True,
         "verified": True,
+        "booking_ref": "",
+        "booking_status": "received",
+        "payment_status": "paid",
         "message": "Payment verified successfully"
     }
 
@@ -856,6 +1258,16 @@ def save_payment_confirmation(payload: SavePaymentRequest):
     itinerary = payload.itinerary or {}
     pricing = payload.pricing or {}
     payment = payload.payment or {}
+
+    total_amount = safe_float(
+        pricing.get("finalFare", pricing.get("total", pricing.get("grand_total", 0)))
+    )
+    paid_amount = safe_float(
+        payment.get("paidAmount", payment.get("advancePaid", payment.get("amount", 0)))
+    )
+    remaining_amount = safe_float(
+        payment.get("remainingAmount", payment.get("remainingBalance", 0))
+    )
 
     conn = get_db()
     cur = conn.cursor()
@@ -876,22 +1288,22 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             safe_str(customer.get("email")),
             clean_phone(safe_str(customer.get("phone"))),
             safe_str(customer.get("destination")),
-            safe_str(customer.get("fromLocation")),
+            safe_str(customer.get("fromLocation", customer.get("startPoint"))),
             safe_str(customer.get("endPoint")),
             safe_str(customer.get("startDate")),
             safe_str(customer.get("endDate")),
             int(customer.get("travellers", 0) or 0),
             int(customer.get("rooms", 0) or 0),
             safe_str(itinerary.get("title")),
-            safe_str(payment.get("paymentType")),
-            float(payment.get("paidAmount", 0) or 0),
-            float(pricing.get("finalFare", 0) or 0),
-            float(payment.get("remainingAmount", 0) or 0),
-            safe_str(payment.get("fullPaymentDeadline")),
+            safe_str(payment.get("paymentType", payment.get("paymentLabel"))),
+            paid_amount,
+            total_amount,
+            remaining_amount,
+            safe_str(payment.get("fullPaymentDeadline", payment.get("dueDate"))),
             safe_str(payment.get("nextScheduleText")),
             safe_str(payment.get("razorpayOrderId")),
             safe_str(payment.get("razorpayPaymentId")),
-            safe_str(payment.get("paidAt")),
+            safe_str(payment.get("paidAt", datetime.utcnow().isoformat())),
             json.dumps(customer, ensure_ascii=False),
             json.dumps(itinerary, ensure_ascii=False),
             json.dumps(pricing, ensure_ascii=False),
