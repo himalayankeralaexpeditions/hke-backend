@@ -23,7 +23,7 @@ load_dotenv()
 # =========================================================
 app = FastAPI(
     title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save",
-    version="8.0.0"
+    version="8.0.1"
 )
 
 app.add_middleware(
@@ -1058,7 +1058,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "8.0.0"
+        "version": "8.0.1"
     }
 
 
@@ -1176,15 +1176,9 @@ def create_payment_order(payload: RazorpayOrderRequest):
     if not rz_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured on server")
 
-    amount_value = float(payload.amount)
-
-    # support both rupees and paise from old/new frontend
-    if amount_value >= 1000:
-        amount_paise = int(round(amount_value))
-        amount_rupees = round(amount_paise / 100, 2)
-    else:
-        amount_rupees = amount_value
-        amount_paise = int(round(amount_rupees * 100))
+    # Frontend always sends amount in rupees
+    amount_rupees = float(payload.amount)
+    amount_paise = int(round(amount_rupees * 100))
 
     receipt = payload.receipt or f"hke_{payload.payment_type}_{clean_phone(payload.phone)}"
 
