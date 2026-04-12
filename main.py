@@ -5,7 +5,9 @@ import hmac
 import hashlib
 import sqlite3
 import smtplib
-from datetime import datetime
+import random
+import requests
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
 
@@ -22,8 +24,8 @@ load_dotenv()
 # APP
 # =========================================================
 app = FastAPI(
-    title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save",
-    version="8.0.1"
+    title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save + OTP Login",
+    version="8.1.0"
 )
 
 app.add_middleware(
@@ -50,6 +52,15 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASS = os.getenv("SMTP_PASS", "").strip()
 ENQUIRY_RECEIVER = os.getenv("ENQUIRY_RECEIVER", "").strip()
+
+# OTP / MSG91
+MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
+MSG91_SMS_FLOW_ID = os.getenv("MSG91_SMS_FLOW_ID", "").strip()
+MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "OTP").strip()
+MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
+OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 rz_client = (
@@ -101,6 +112,18 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS otp_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mobile TEXT NOT NULL,
+        otp_code TEXT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        verified INTEGER DEFAULT 0,
+        expires_at TEXT,
+        created_at TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -113,7 +136,7 @@ def startup_event():
 # HELPERS
 # =========================================================
 def clean_phone(value: str) -> str:
-    return re.sub(r"\D", "", value or "")[:10]
+    return re.sub(r"\D", "", value or "")[-10:]
 
 
 def safe_str(value: Any, default: str = "") -> str:
@@ -285,6 +308,44 @@ Generated Itinerary Summary
         server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
+
+
+def generate_otp() -> str:
+    return str(random.randint(100000, 999999))
+
+
+def send_msg91_otp(mobile: str, otp: str):
+    if OTP_BYPASS:
+        return {"ok": True, "message": "OTP bypass mode enabled", "otp": otp}
+
+    if not MSG91_AUTH_KEY or not MSG91_SMS_FLOW_ID:
+        raise RuntimeError("MSG91_AUTH_KEY or MSG91_SMS_FLOW_ID not configured")
+
+    url = "https://control.msg91.com/api/v5/flow/"
+
+    payload = {
+        "flow_id": MSG91_SMS_FLOW_ID,
+        "sender": MSG91_SENDER_ID,
+        "mobiles": f"91{mobile}",
+        MSG91_OTP_VARIABLE_NAME: otp
+    }
+
+    headers = {
+        "authkey": MSG91_AUTH_KEY,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
+
+    try:
+        response_data = response.json()
+    except Exception:
+        response_data = {"raw": response.text}
+
+    if response.status_code not in (200, 201, 202):
+        raise RuntimeError(f"MSG91 send failed: {response.text}")
+
+    return response_data
 
 
 def build_itinerary_prompt(data: dict) -> str:
@@ -1050,6 +1111,39 @@ class SavePaymentRequest(BaseModel):
     pricing: Dict[str, Any]
     payment: Dict[str, Any]
 
+
+class SendOTPRequest(BaseModel):
+    mobile: str
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+
+class VerifyOTPRequest(BaseModel):
+    mobile: str
+    otp: str
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v):
+        otp = str(v).strip()
+        if len(otp) < 4:
+            raise ValueError("OTP is invalid")
+        return otp
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -1058,7 +1152,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "8.0.1"
+        "version": "8.1.0"
     }
 
 
@@ -1069,6 +1163,8 @@ def health():
         "openai_configured": bool(client),
         "razorpay_configured": bool(rz_client),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
+        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
+        "otp_bypass": OTP_BYPASS,
         "model": OPENAI_MODEL
     }
 
@@ -1081,6 +1177,126 @@ def payment_config():
         "razorpayKeyId": RAZORPAY_KEY_ID,
         "key": RAZORPAY_KEY_ID,
         "razorpay_enabled": bool(rz_client)
+    }
+
+
+@app.post("/api/auth/send-otp")
+def send_otp(payload: SendOTPRequest):
+    mobile = payload.mobile
+    otp = generate_otp()
+    created_at = datetime.utcnow()
+    expires_at = created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("DELETE FROM otp_sessions WHERE mobile = ?", (mobile,))
+        cur.execute("""
+            INSERT INTO otp_sessions (
+                mobile, otp_code, attempts, verified, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            mobile,
+            otp,
+            0,
+            0,
+            expires_at.isoformat(),
+            created_at.isoformat()
+        ))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Unable to create OTP session: {str(e)}")
+    finally:
+        conn.close()
+
+    try:
+        provider_response = send_msg91_otp(mobile, otp)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OTP send failed: {str(e)}")
+
+    resp = {
+        "ok": True,
+        "message": "OTP sent successfully",
+        "mobile": mobile,
+        "expires_in_minutes": OTP_EXPIRY_MINUTES,
+        "provider": "msg91"
+    }
+
+    if OTP_BYPASS:
+        resp["debug_otp"] = otp
+
+    if provider_response:
+        resp["provider_response"] = provider_response
+
+    return resp
+
+
+@app.post("/api/auth/verify-otp")
+def verify_otp(payload: VerifyOTPRequest):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT * FROM otp_sessions
+        WHERE mobile = ?
+        ORDER BY id DESC
+        LIMIT 1
+    """, (payload.mobile,))
+    row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="OTP session not found")
+
+    if safe_int(row["verified"], 0) == 1:
+        conn.close()
+        return {
+            "ok": True,
+            "message": "Already verified",
+            "mobile": payload.mobile
+        }
+
+    attempts = safe_int(row["attempts"], 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Maximum OTP attempts exceeded")
+
+    expires_at_raw = safe_str(row["expires_at"])
+    try:
+        expires_at = datetime.fromisoformat(expires_at_raw)
+    except Exception:
+        expires_at = datetime.utcnow() - timedelta(minutes=1)
+
+    if datetime.utcnow() > expires_at:
+        conn.close()
+        raise HTTPException(status_code=400, detail="OTP expired")
+
+    if safe_str(row["otp_code"]) != safe_str(payload.otp):
+        cur.execute("""
+            UPDATE otp_sessions
+            SET attempts = attempts + 1
+            WHERE id = ?
+        """, (row["id"],))
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    cur.execute("""
+        UPDATE otp_sessions
+        SET verified = 1
+        WHERE id = ?
+    """, (row["id"],))
+    conn.commit()
+    conn.close()
+
+    return {
+        "ok": True,
+        "message": "Login successful",
+        "mobile": payload.mobile,
+        "verified": True
     }
 
 
@@ -1148,10 +1364,7 @@ def generate_pilgrimage(payload: PilgrimageRequest):
     try:
         itinerary = call_openai_json(build_pilgrimage_prompt(data, pricing))
         source = "openai"
-        if "pricing" not in itinerary or not isinstance(itinerary.get("pricing"), dict):
-            itinerary["pricing"] = pricing
-        else:
-            itinerary["pricing"] = pricing
+        itinerary["pricing"] = pricing
     except Exception as e:
         itinerary = fallback_pilgrimage_itinerary(data, pricing)
         source = "fallback"
@@ -1176,7 +1389,6 @@ def create_payment_order(payload: RazorpayOrderRequest):
     if not rz_client:
         raise HTTPException(status_code=500, detail="Razorpay is not configured on server")
 
-    # Frontend always sends amount in rupees
     amount_rupees = float(payload.amount)
     amount_paise = int(round(amount_rupees * 100))
 
