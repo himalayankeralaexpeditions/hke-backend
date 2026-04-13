@@ -6,13 +6,14 @@ import hashlib
 import sqlite3
 import smtplib
 import random
+import secrets
 import requests
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from openai import OpenAI
@@ -24,8 +25,8 @@ load_dotenv()
 # APP
 # =========================================================
 app = FastAPI(
-    title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save + OTP Login",
-    version="8.1.0"
+    title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save + OTP Login + Admin Login",
+    version="8.2.0"
 )
 
 app.add_middleware(
@@ -62,12 +63,20 @@ OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
 
+# Admin login
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123").strip()
+
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 rz_client = (
     razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
     if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET
     else None
 )
+
+# Simple in-memory admin session store
+# Later you can move this to DB or Redis
+ADMIN_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 # =========================================================
 # DB
@@ -931,6 +940,21 @@ def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) ->
 
     return hmac.compare_digest(expected_signature, signature)
 
+
+def require_admin_token(authorization: Optional[str]) -> Dict[str, Any]:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Admin authorization required")
+
+    token = authorization.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
+    session = ADMIN_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired admin session")
+
+    return session
+
 # =========================================================
 # MODELS
 # =========================================================
@@ -1144,6 +1168,11 @@ class VerifyOTPRequest(BaseModel):
             raise ValueError("OTP is invalid")
         return otp
 
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -1152,7 +1181,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "8.1.0"
+        "version": "8.2.0"
     }
 
 
@@ -1165,6 +1194,7 @@ def health():
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
         "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
         "otp_bypass": OTP_BYPASS,
+        "admin_login_enabled": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
         "model": OPENAI_MODEL
     }
 
@@ -1180,6 +1210,64 @@ def payment_config():
     }
 
 
+# =========================================================
+# ADMIN LOGIN
+# =========================================================
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLoginRequest):
+    username = safe_str(payload.username)
+    password = safe_str(payload.password)
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+
+    if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+
+    token = secrets.token_hex(32)
+    ADMIN_SESSIONS[token] = {
+        "username": username,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    return {
+        "ok": True,
+        "message": "Admin login successful",
+        "token": token,
+        "admin": username
+    }
+
+
+@app.get("/api/admin/me")
+def admin_me(authorization: Optional[str] = Header(default=None)):
+    session = require_admin_token(authorization)
+    return {
+        "ok": True,
+        "admin": session.get("username"),
+        "created_at": session.get("created_at")
+    }
+
+
+@app.post("/api/admin/logout")
+def admin_logout(authorization: Optional[str] = Header(default=None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization required")
+
+    token = authorization.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
+    ADMIN_SESSIONS.pop(token, None)
+
+    return {
+        "ok": True,
+        "message": "Admin logged out successfully"
+    }
+
+
+# =========================================================
+# CUSTOMER OTP LOGIN
+# =========================================================
 @app.post("/api/auth/send-otp")
 def send_otp(payload: SendOTPRequest):
     mobile = payload.mobile
@@ -1300,6 +1388,9 @@ def verify_otp(payload: VerifyOTPRequest):
     }
 
 
+# =========================================================
+# AI ITINERARY
+# =========================================================
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: PlannerRequest):
     data = payload.model_dump()
@@ -1349,6 +1440,9 @@ def edit_itinerary(payload: ChatEditRequest):
         }
 
 
+# =========================================================
+# PILGRIMAGE
+# =========================================================
 @app.post("/api/pilgrimage/generate")
 def generate_pilgrimage(payload: PilgrimageRequest):
     data = payload.model_dump()
@@ -1384,6 +1478,9 @@ def generate_pilgrimage(payload: PilgrimageRequest):
     }
 
 
+# =========================================================
+# PAYMENT
+# =========================================================
 @app.post("/api/payment/create-order")
 def create_payment_order(payload: RazorpayOrderRequest):
     if not rz_client:
@@ -1553,6 +1650,29 @@ def list_payments():
         FROM payments
         ORDER BY id DESC
         LIMIT 100
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {"ok": True, "items": rows}
+
+
+# =========================================================
+# OPTIONAL ADMIN-PROTECTED BOOKING LIST
+# =========================================================
+@app.get("/api/admin/bookings")
+def admin_bookings(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, customer_name, customer_email, customer_phone, destination,
+               start_date, end_date, travellers, rooms, trip_name, payment_type,
+               paid_amount, total_amount, remaining_amount, razorpay_payment_id, paid_at
+        FROM payments
+        ORDER BY id DESC
+        LIMIT 200
     """)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
