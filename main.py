@@ -13,9 +13,9 @@ from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 from openai import OpenAI
 import razorpay
 
@@ -26,7 +26,7 @@ load_dotenv()
 # =========================================================
 app = FastAPI(
     title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save + OTP Login + Admin Login",
-    version="8.2.0"
+    version="8.3.1"
 )
 
 app.add_middleware(
@@ -75,7 +75,6 @@ rz_client = (
 )
 
 # Simple in-memory admin session store
-# Later you can move this to DB or Redis
 ADMIN_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 # =========================================================
@@ -133,6 +132,21 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS itinerary_change_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        booking_ref TEXT,
+        customer_phone TEXT,
+        customer_name TEXT,
+        destination TEXT,
+        request_text TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        admin_note TEXT DEFAULT '',
+        created_at TEXT,
+        updated_at TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -145,7 +159,12 @@ def startup_event():
 # HELPERS
 # =========================================================
 def clean_phone(value: str) -> str:
-    return re.sub(r"\D", "", value or "")[-10:]
+    digits = re.sub(r"\D", "", value or "")
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    if len(digits) > 10:
+        digits = digits[-10:]
+    return digits
 
 
 def safe_str(value: Any, default: str = "") -> str:
@@ -955,6 +974,13 @@ def require_admin_token(authorization: Optional[str]) -> Dict[str, Any]:
 
     return session
 
+
+def money_to_paise(value: Any) -> int:
+    try:
+        return int(round(float(value or 0) * 100))
+    except Exception:
+        return 0
+
 # =========================================================
 # MODELS
 # =========================================================
@@ -1137,28 +1163,34 @@ class SavePaymentRequest(BaseModel):
 
 
 class SendOTPRequest(BaseModel):
-    mobile: str
+    mobile: Optional[str] = None
+    phone: Optional[str] = None
 
-    @field_validator("mobile")
-    @classmethod
-    def validate_mobile(cls, v):
-        digits = clean_phone(v)
+    @model_validator(mode="after")
+    def validate_mobile_or_phone(self):
+        value = self.mobile or self.phone
+        digits = clean_phone(value or "")
         if len(digits) != 10:
-            raise ValueError("Phone must be 10 digits")
-        return digits
+            raise ValueError("Mobile number must be 10 digits")
+        self.mobile = digits
+        self.phone = digits
+        return self
 
 
 class VerifyOTPRequest(BaseModel):
-    mobile: str
+    mobile: Optional[str] = None
+    phone: Optional[str] = None
     otp: str
 
-    @field_validator("mobile")
-    @classmethod
-    def validate_mobile(cls, v):
-        digits = clean_phone(v)
+    @model_validator(mode="after")
+    def validate_mobile_or_phone(self):
+        value = self.mobile or self.phone
+        digits = clean_phone(value or "")
         if len(digits) != 10:
-            raise ValueError("Phone must be 10 digits")
-        return digits
+            raise ValueError("Mobile number must be 10 digits")
+        self.mobile = digits
+        self.phone = digits
+        return self
 
     @field_validator("otp")
     @classmethod
@@ -1173,6 +1205,43 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
 
+
+class ItineraryChangeRequestCreate(BaseModel):
+    booking_ref: str
+    customer_phone: str
+    customer_name: Optional[str] = ""
+    destination: Optional[str] = ""
+    request_text: str
+
+    @field_validator("customer_phone")
+    @classmethod
+    def validate_phone(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+    @field_validator("booking_ref", "request_text")
+    @classmethod
+    def validate_required_strings(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("This field is required")
+        return v.strip()
+
+
+class ItineraryChangeRequestReview(BaseModel):
+    status: str
+    admin_note: Optional[str] = ""
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        allowed = {"pending", "under_review", "approved", "rejected"}
+        value = str(v).strip().lower()
+        if value not in allowed:
+            raise ValueError("Status must be one of: pending, under_review, approved, rejected")
+        return value
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -1181,7 +1250,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "8.2.0"
+        "version": "8.3.1"
     }
 
 
@@ -1270,7 +1339,7 @@ def admin_logout(authorization: Optional[str] = Header(default=None)):
 # =========================================================
 @app.post("/api/auth/send-otp")
 def send_otp(payload: SendOTPRequest):
-    mobile = payload.mobile
+    mobile = payload.mobile or payload.phone or ""
     otp = generate_otp()
     created_at = datetime.utcnow()
     expires_at = created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
@@ -1309,6 +1378,7 @@ def send_otp(payload: SendOTPRequest):
         "ok": True,
         "message": "OTP sent successfully",
         "mobile": mobile,
+        "phone": mobile,
         "expires_in_minutes": OTP_EXPIRY_MINUTES,
         "provider": "msg91"
     }
@@ -1324,6 +1394,8 @@ def send_otp(payload: SendOTPRequest):
 
 @app.post("/api/auth/verify-otp")
 def verify_otp(payload: VerifyOTPRequest):
+    mobile = payload.mobile or payload.phone or ""
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -1332,7 +1404,7 @@ def verify_otp(payload: VerifyOTPRequest):
         WHERE mobile = ?
         ORDER BY id DESC
         LIMIT 1
-    """, (payload.mobile,))
+    """, (mobile,))
     row = cur.fetchone()
 
     if not row:
@@ -1344,7 +1416,8 @@ def verify_otp(payload: VerifyOTPRequest):
         return {
             "ok": True,
             "message": "Already verified",
-            "mobile": payload.mobile
+            "mobile": mobile,
+            "phone": mobile
         }
 
     attempts = safe_int(row["attempts"], 0)
@@ -1383,7 +1456,8 @@ def verify_otp(payload: VerifyOTPRequest):
     return {
         "ok": True,
         "message": "Login successful",
-        "mobile": payload.mobile,
+        "mobile": mobile,
+        "phone": mobile,
         "verified": True
     }
 
@@ -1475,6 +1549,147 @@ def generate_pilgrimage(payload: PilgrimageRequest):
         "bookingRef": f"HKE-PIL-{int(datetime.now().timestamp())}",
         "pricing": pricing,
         "itinerary": itinerary
+    }
+
+
+# =========================================================
+# ITINERARY CHANGE REQUESTS
+# =========================================================
+@app.post("/api/request-itinerary-change")
+def request_itinerary_change(payload: ItineraryChangeRequestCreate):
+    conn = get_db()
+    cur = conn.cursor()
+
+    now_ts = datetime.utcnow().isoformat()
+
+    try:
+        cur.execute("""
+            INSERT INTO itinerary_change_requests (
+                booking_ref,
+                customer_phone,
+                customer_name,
+                destination,
+                request_text,
+                status,
+                admin_note,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            safe_str(payload.booking_ref),
+            clean_phone(payload.customer_phone),
+            safe_str(payload.customer_name),
+            safe_str(payload.destination),
+            safe_str(payload.request_text),
+            "pending",
+            "",
+            now_ts,
+            now_ts
+        ))
+        conn.commit()
+        request_id = cur.lastrowid
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Unable to save itinerary change request: {str(e)}")
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "message": "Itinerary change request submitted successfully",
+        "request_id": request_id,
+        "status": "pending"
+    }
+
+
+@app.get("/api/itinerary-change-requests")
+def get_itinerary_change_requests(phone: str = Query(...)):
+    clean = clean_phone(phone)
+    if len(clean) != 10:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, booking_ref, customer_phone, customer_name, destination,
+               request_text, status, admin_note, created_at, updated_at
+        FROM itinerary_change_requests
+        WHERE customer_phone = ?
+        ORDER BY id DESC
+    """, (clean,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {"ok": True, "items": rows}
+
+
+@app.get("/api/admin/itinerary-requests")
+def admin_itinerary_requests(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, booking_ref, customer_phone, customer_name, destination,
+               request_text, status, admin_note, created_at, updated_at
+        FROM itinerary_change_requests
+        ORDER BY id DESC
+        LIMIT 300
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {"ok": True, "items": rows}
+
+
+@app.post("/api/admin/itinerary-requests/{request_id}/review")
+def admin_review_itinerary_request(
+    request_id: int,
+    payload: ItineraryChangeRequestReview,
+    authorization: Optional[str] = Header(default=None)
+):
+    admin = require_admin_token(authorization)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM itinerary_change_requests WHERE id = ?", (request_id,))
+    row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Itinerary change request not found")
+
+    now_ts = datetime.utcnow().isoformat()
+    admin_note = safe_str(payload.admin_note)
+
+    try:
+        cur.execute("""
+            UPDATE itinerary_change_requests
+            SET status = ?, admin_note = ?, updated_at = ?
+            WHERE id = ?
+        """, (
+            payload.status,
+            admin_note,
+            now_ts,
+            request_id
+        ))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Unable to update itinerary request: {str(e)}")
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "message": "Itinerary request updated successfully",
+        "request_id": request_id,
+        "status": payload.status,
+        "reviewed_by": admin.get("username"),
+        "admin_note": admin_note
     }
 
 
@@ -1658,7 +1873,76 @@ def list_payments():
 
 
 # =========================================================
-# OPTIONAL ADMIN-PROTECTED BOOKING LIST
+# CUSTOMER ORDERS LOOKUP
+# =========================================================
+@app.get("/api/orders")
+def list_orders(
+    phone: Optional[str] = Query(default=None),
+    mobile: Optional[str] = Query(default=None),
+    booking_ref: Optional[str] = Query(default=None)
+):
+    conn = get_db()
+    cur = conn.cursor()
+
+    if booking_ref:
+        cur.execute("""
+            SELECT * FROM payments
+            WHERE razorpay_order_id = ? OR razorpay_payment_id = ? OR trip_name = ?
+            ORDER BY id DESC
+        """, (booking_ref, booking_ref, booking_ref))
+    else:
+        lookup = phone or mobile
+        if not lookup:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Phone or booking_ref is required")
+
+        clean = clean_phone(lookup)
+        if len(clean) != 10:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Invalid phone number")
+
+        cur.execute("""
+            SELECT * FROM payments
+            WHERE customer_phone = ?
+            ORDER BY id DESC
+        """, (clean,))
+
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    orders = []
+    for row in rows:
+        booking_ref_value = (
+            safe_str(row.get("razorpay_order_id"))
+            or safe_str(row.get("razorpay_payment_id"))
+            or f"HKE-{row.get('id')}"
+        )
+
+        orders.append({
+            "booking_ref": booking_ref_value,
+            "booking_status": "confirmed",
+            "payment_status": "paid" if safe_float(row.get("remaining_amount")) <= 0 else "partially paid",
+            "destination": safe_str(row.get("destination")),
+            "start_date": safe_str(row.get("start_date")),
+            "end_date": safe_str(row.get("end_date")),
+            "customer_name": safe_str(row.get("customer_name")),
+            "phone": safe_str(row.get("customer_phone")),
+            "trip_name": safe_str(row.get("trip_name")),
+            "full_payment_due_date": safe_str(row.get("full_payment_deadline"), "-"),
+            "cancellable_until": safe_str(row.get("full_payment_deadline"), "-"),
+            "total_amount_paise": money_to_paise(row.get("total_amount")),
+            "paid_amount_paise": money_to_paise(row.get("paid_amount")),
+            "remaining_amount_paise": money_to_paise(row.get("remaining_amount")),
+            "itinerary": safe_str(row.get("raw_itinerary_json")),
+            "pricing": safe_str(row.get("raw_pricing_json")),
+            "customer": safe_str(row.get("raw_customer_json")),
+        })
+
+    return {"ok": True, "orders": orders}
+
+
+# =========================================================
+# ADMIN-PROTECTED BOOKING LIST
 # =========================================================
 @app.get("/api/admin/bookings")
 def admin_bookings(authorization: Optional[str] = Header(default=None)):
@@ -1669,7 +1953,8 @@ def admin_bookings(authorization: Optional[str] = Header(default=None)):
     cur.execute("""
         SELECT id, customer_name, customer_email, customer_phone, destination,
                start_date, end_date, travellers, rooms, trip_name, payment_type,
-               paid_amount, total_amount, remaining_amount, razorpay_payment_id, paid_at
+               paid_amount, total_amount, remaining_amount, razorpay_payment_id,
+               razorpay_order_id, paid_at
         FROM payments
         ORDER BY id DESC
         LIMIT 200
