@@ -26,7 +26,7 @@ load_dotenv()
 # =========================================================
 app = FastAPI(
     title="HKE Backend - AI Planner + Pilgrimage + Razorpay + Booking Save + OTP Login + Admin Login",
-    version="8.3.1"
+    version="8.3.2"
 )
 
 app.add_middleware(
@@ -57,7 +57,8 @@ ENQUIRY_RECEIVER = os.getenv("ENQUIRY_RECEIVER", "").strip()
 # OTP / MSG91
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
 MSG91_SMS_FLOW_ID = os.getenv("MSG91_SMS_FLOW_ID", "").strip()
-MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "OTP").strip()
+MSG91_DLT_TEMPLATE_ID = os.getenv("MSG91_DLT_TEMPLATE_ID", "1207177588465695008").strip()
+MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "var1").strip()
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
@@ -346,8 +347,16 @@ def send_msg91_otp(mobile: str, otp: str):
     if OTP_BYPASS:
         return {"ok": True, "message": "OTP bypass mode enabled", "otp": otp}
 
-    if not MSG91_AUTH_KEY or not MSG91_SMS_FLOW_ID:
-        raise RuntimeError("MSG91_AUTH_KEY or MSG91_SMS_FLOW_ID not configured")
+    if not MSG91_AUTH_KEY:
+        raise RuntimeError("MSG91_AUTH_KEY not configured")
+
+    if not MSG91_SMS_FLOW_ID:
+        raise RuntimeError("MSG91_SMS_FLOW_ID not configured")
+
+    if not MSG91_DLT_TEMPLATE_ID:
+        raise RuntimeError("MSG91_DLT_TEMPLATE_ID not configured")
+
+    variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
 
     url = "https://control.msg91.com/api/v5/flow/"
 
@@ -355,7 +364,8 @@ def send_msg91_otp(mobile: str, otp: str):
         "flow_id": MSG91_SMS_FLOW_ID,
         "sender": MSG91_SENDER_ID,
         "mobiles": f"91{mobile}",
-        MSG91_OTP_VARIABLE_NAME: otp
+        "template_id": MSG91_DLT_TEMPLATE_ID,
+        variable_name: otp
     }
 
     headers = {
@@ -372,6 +382,11 @@ def send_msg91_otp(mobile: str, otp: str):
 
     if response.status_code not in (200, 201, 202):
         raise RuntimeError(f"MSG91 send failed: {response.text}")
+
+    lower_dump = json.dumps(response_data).lower()
+
+    if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
+        raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
 
     return response_data
 
@@ -1250,7 +1265,7 @@ def root():
     return {
         "ok": True,
         "service": "HKE Backend Running",
-        "version": "8.3.1"
+        "version": "8.3.2"
     }
 
 
@@ -1262,6 +1277,8 @@ def health():
         "razorpay_configured": bool(rz_client),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
         "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
+        "msg91_dlt_template_configured": bool(MSG91_DLT_TEMPLATE_ID),
+        "msg91_variable_name": MSG91_OTP_VARIABLE_NAME,
         "otp_bypass": OTP_BYPASS,
         "admin_login_enabled": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
         "model": OPENAI_MODEL
