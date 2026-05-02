@@ -3,6 +3,7 @@ import json
 import re
 import hmac
 import hashlib
+import logging
 import sqlite3
 import smtplib
 import random
@@ -12,14 +13,20 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
 
+from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 from openai import OpenAI
+from passlib.context import CryptContext
+from pymongo import MongoClient
 import razorpay
 
 load_dotenv()
+logger = logging.getLogger("hke.backend")
 
 # =========================================================
 # APP
@@ -31,11 +38,46 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://himalayankeralaexpeditions.com",
+        "https://www.himalayankeralaexpeditions.com",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|https://([a-z0-9-]+\.)*godaddysites\.com$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_request: Request, exc: RequestValidationError):
+    first_error = exc.errors()[0] if exc.errors() else {}
+    message = first_error.get("msg") or "Invalid request"
+    return JSONResponse(
+        status_code=422,
+        content={"ok": False, "detail": message}
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException):
+    detail = exc.detail
+    if exc.status_code >= 500:
+        detail = "Something went wrong. Please try again later."
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"ok": False, "detail": detail}
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_request: Request, _exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"ok": False, "detail": "Something went wrong. Please try again later."}
+    )
 
 # =========================================================
 # ENV
@@ -57,7 +99,8 @@ ENQUIRY_RECEIVER = os.getenv("ENQUIRY_RECEIVER", "").strip()
 # OTP / MSG91
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
 MSG91_SMS_FLOW_ID = os.getenv("MSG91_SMS_FLOW_ID", "").strip()
-MSG91_DLT_TEMPLATE_ID = os.getenv("MSG91_DLT_TEMPLATE_ID", "1207177588465695008").strip()
+MSG91_DLT_TEMPLATE_ID = os.getenv("MSG91_DLT_TEMPLATE_ID", "").strip()
+MSG91_DLT_TEMPLATE_VERSION = os.getenv("MSG91_DLT_TEMPLATE_VERSION", "v1.1").strip()
 MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "var1").strip()
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
@@ -68,6 +111,10 @@ OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123").strip()
 
+# Mongo / partner portal
+MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
+MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "hke").strip()
+
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 rz_client = (
     razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
@@ -77,6 +124,10 @@ rz_client = (
 
 # Simple in-memory admin session store
 ADMIN_SESSIONS: Dict[str, Dict[str, Any]] = {}
+PARTNER_SESSIONS: Dict[str, Dict[str, Any]] = {}
+PASSWORD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+mongo_client = MongoClient(MONGODB_URI) if MONGODB_URI else None
 
 # =========================================================
 # DB
@@ -148,6 +199,21 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS customer_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT NOT NULL UNIQUE,
+        name TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        consent_marketing INTEGER DEFAULT 1,
+        source TEXT DEFAULT '',
+        first_login_at TEXT,
+        last_login_at TEXT,
+        last_activity TEXT,
+        notes TEXT DEFAULT ''
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -155,6 +221,46 @@ def init_db():
 @app.on_event("startup")
 def startup_event():
     init_db()
+
+
+# =========================================================
+# MONGO HELPERS
+# =========================================================
+def get_mongo_db():
+    if not mongo_client:
+        raise HTTPException(status_code=500, detail="MongoDB is not configured")
+    return mongo_client[MONGODB_DB_NAME]
+
+
+def get_partners_collection():
+    return get_mongo_db()["partners"]
+
+
+def get_partner_rates_collection():
+    return get_mongo_db()["partner_rates"]
+
+
+def ensure_partner_indexes():
+    if not mongo_client:
+        return
+
+    partners = get_partners_collection()
+    rates = get_partner_rates_collection()
+    partners.create_index("mobile", unique=True)
+    rates.create_index("partner_id")
+    rates.create_index("status")
+    rates.create_index("available")
+    rates.create_index("service_area")
+    rates.create_index("available_from")
+    rates.create_index("available_to")
+    rates.create_index([("partner_id", 1), ("available_from", 1), ("available_to", 1)])
+    rates.create_index([("status", 1), ("available", 1), ("partner_type", 1)])
+    rates.create_index([("location", 1), ("service_area", 1)])
+
+
+@app.on_event("startup")
+def startup_event_partner_indexes():
+    ensure_partner_indexes()
 
 # =========================================================
 # HELPERS
@@ -186,6 +292,76 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def serialize_customer_profile(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "phone": safe_str(row["phone"]),
+        "name": safe_str(row["name"]),
+        "email": safe_str(row["email"]),
+        "consent_marketing": bool(safe_int(row["consent_marketing"], 0)),
+        "source": safe_str(row["source"]),
+        "first_login_at": safe_str(row["first_login_at"]),
+        "last_login_at": safe_str(row["last_login_at"]),
+        "last_activity": safe_str(row["last_activity"])
+    }
+
+
+def upsert_customer_profile_after_otp(
+    cur: sqlite3.Cursor,
+    phone: str,
+    login_at: str,
+    consent_marketing: bool = True,
+    source: str = "website_otp_login"
+):
+    cur.execute(
+        """
+        INSERT INTO customer_profiles (
+            phone, consent_marketing, source, first_login_at, last_login_at, last_activity
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(phone) DO UPDATE SET
+            consent_marketing = excluded.consent_marketing,
+            source = excluded.source,
+            last_login_at = excluded.last_login_at,
+            last_activity = excluded.last_activity
+        """,
+        (
+            phone,
+            1 if consent_marketing else 0,
+            source,
+            login_at,
+            login_at,
+            login_at
+        )
+    )
+
+
+def is_phone_verified(phone: str) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT verified, created_at
+        FROM otp_sessions
+        WHERE mobile = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (phone,)
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or safe_int(row["verified"], 0) != 1:
+        return False
+
+    created_at_raw = safe_str(row["created_at"])
+    try:
+        created_at = datetime.fromisoformat(created_at_raw)
+    except Exception:
+        return False
+
+    return created_at >= (datetime.utcnow() - timedelta(hours=24))
 
 
 def extract_text_from_response(resp: Any) -> str:
@@ -356,6 +532,9 @@ def send_msg91_otp(mobile: str, otp: str):
     if not MSG91_DLT_TEMPLATE_ID:
         raise RuntimeError("MSG91_DLT_TEMPLATE_ID not configured")
 
+    if MSG91_DLT_TEMPLATE_VERSION != "v1.1":
+        raise RuntimeError("MSG91_DLT_TEMPLATE_VERSION must be set to v1.1 for OTP_LOGIN_HKE_NUMERIC")
+
     variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
 
     url = "https://control.msg91.com/api/v5/flow/"
@@ -373,7 +552,11 @@ def send_msg91_otp(mobile: str, otp: str):
         "Content-Type": "application/json"
     }
 
-    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+    except requests.RequestException as exc:
+        logger.exception("MSG91 OTP request transport failure for mobile=%s", mobile)
+        raise RuntimeError(f"MSG91 request failed: {exc}") from exc
 
     try:
         response_data = response.json()
@@ -381,24 +564,56 @@ def send_msg91_otp(mobile: str, otp: str):
         response_data = {"raw": response.text}
 
     if response.status_code not in (200, 201, 202):
+        logger.error(
+            "MSG91 OTP send failed for mobile=%s status=%s response=%s",
+            mobile,
+            response.status_code,
+            response.text
+        )
         raise RuntimeError(f"MSG91 send failed: {response.text}")
 
     lower_dump = json.dumps(response_data).lower()
 
     if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
+        logger.error(
+            "MSG91 OTP rejected for mobile=%s response=%s",
+            mobile,
+            json.dumps(response_data, default=str)
+        )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
+
+    logger.info(
+        "MSG91 OTP response for mobile=%s response=%s",
+        mobile,
+        json.dumps(response_data, default=str)
+    )
 
     return response_data
 
 
-def build_itinerary_prompt(data: dict) -> str:
+def build_itinerary_prompt(data: dict, partner_context: Optional[Dict[str, Any]] = None) -> str:
+    partner_lines = []
+    if partner_context:
+        partner_lines = partner_context.get("prompt_lines") or []
+
+    partner_block = ""
+    if partner_lines:
+        partner_block = (
+            "\nVerified HKE partner availability context:\n"
+            + "\n".join(partner_lines)
+            + "\n\nImportant response rules for verified partner availability:\n"
+            + "- Include this exact line in the summary or stay guidance: Stay will be arranged in verified HKE partner property according to selected category.\n"
+            + "- Do not reveal partner names, contact numbers, room counts, or rates.\n"
+            + "- Present hotel, vehicle, and guide only as HKE verified or approved support.\n"
+        )
+
     return f"""
 You are a senior luxury travel consultant and itinerary designer for Himalayan Kerala Expeditions, a premium Indian travel company.
 
 Your job is to create a highly polished, customer-facing itinerary that feels like it was prepared by an experienced travel executive with deep destination knowledge.
 
 Customer trip request:
-{json.dumps(data, ensure_ascii=False, indent=2)}
+{json.dumps(data, ensure_ascii=False, indent=2)}{partner_block}
 
 Return ONLY valid JSON in this exact structure:
 {{
@@ -996,6 +1211,194 @@ def money_to_paise(value: Any) -> int:
     except Exception:
         return 0
 
+
+
+def parse_iso_date(value: str) -> datetime:
+    try:
+        return datetime.strptime(safe_str(value), "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {value}. Use YYYY-MM-DD")
+
+
+def hash_password(password: str) -> str:
+    return PASSWORD_CONTEXT.hash(password)
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        return PASSWORD_CONTEXT.verify(password, hashed)
+    except Exception:
+        return False
+
+
+def serialize_partner(partner: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(partner.get("_id") or ""),
+        "partner_type": safe_str(partner.get("partner_type")),
+        "business_name": safe_str(partner.get("business_name")),
+        "contact_person": safe_str(partner.get("contact_person")),
+        "mobile": clean_phone(safe_str(partner.get("mobile"))),
+        "email": safe_str(partner.get("email")),
+        "created_at": safe_str(partner.get("created_at"))
+    }
+
+
+def serialize_partner_rate(rate: Dict[str, Any]) -> Dict[str, Any]:
+    item = dict(rate)
+    item["id"] = str(item.get("_id") or item.get("id") or "")
+    item["_id"] = item["id"]
+    item["partner_id"] = str(item.get("partner_id") or "")
+    return item
+
+
+def require_partner_token(authorization: Optional[str]) -> Dict[str, Any]:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Partner authorization required")
+
+    token = authorization.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
+    session = PARTNER_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired partner session")
+
+    return session
+
+
+def get_rate_sort_value(rate: Dict[str, Any]) -> float:
+    partner_type = safe_str(rate.get("partner_type"))
+    if partner_type == "Hotel":
+        return safe_float(rate.get("price_per_night"), 10**12)
+    if partner_type == "Driver":
+        per_day = safe_float(rate.get("per_day_rate"), 10**12)
+        per_km = safe_float(rate.get("per_km_rate"), 10**12)
+        return per_day if per_day > 0 else per_km
+    if partner_type == "Guide":
+        return safe_float(rate.get("per_day_rate"), 10**12)
+    return 10**12
+
+
+def get_partner_search_terms(data: Dict[str, Any]) -> List[str]:
+    terms = []
+    destination = safe_str(data.get("destination"))
+    if destination:
+        terms.append(destination)
+    for place in data.get("places") or []:
+        cleaned = safe_str(place)
+        if cleaned and cleaned not in terms:
+            terms.append(cleaned)
+    return terms
+
+
+def find_best_partner_rate(
+    search_terms: List[str],
+    start_date: str,
+    end_date: str,
+    partner_type: str,
+    extra_filter: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    if not mongo_client or not search_terms:
+        return None
+
+    matchers = []
+    for term in search_terms:
+        regex = {"$regex": re.escape(term), "$options": "i"}
+        matchers.extend([
+            {"location": regex},
+            {"service_area": regex}
+        ])
+
+    query: Dict[str, Any] = {
+        "partner_type": partner_type,
+        "status": "approved",
+        "available": True,
+        "available_from": {"$lte": safe_str(end_date)},
+        "available_to": {"$gte": safe_str(start_date)},
+        "$or": matchers
+    }
+
+    if extra_filter:
+        query.update(extra_filter)
+
+    items = list(get_partner_rates_collection().find(query))
+    if not items:
+        return None
+
+    items.sort(key=get_rate_sort_value)
+    return items[0]
+
+
+def get_partner_context_for_itinerary(data: Dict[str, Any]) -> Dict[str, Any]:
+    search_terms = get_partner_search_terms(data)
+    start_date = safe_str(data.get("startDate"))
+    end_date = safe_str(data.get("endDate"))
+    hotel_class = safe_str(data.get("hotelClass"), "Standard")
+    vehicle = safe_str(data.get("vehicle"), "SUV")
+    guide = safe_str(data.get("guide"), "Without Guide")
+
+    result = {
+        "hotel": None,
+        "driver": None,
+        "guide": None,
+        "prompt_lines": []
+    }
+
+    hotel_rate = find_best_partner_rate(
+        search_terms,
+        start_date,
+        end_date,
+        "Hotel",
+        {"hotel_category": hotel_class}
+    )
+    if hotel_rate:
+        result["hotel"] = hotel_rate
+        result["prompt_lines"].append(f"Hotel: {hotel_class} (HKE Verified Partner)")
+
+    vehicle_lower = vehicle.strip().lower()
+    if vehicle_lower not in {"", "no vehicle", "no cab", "no cab required", "own vehicle"}:
+        driver_rate = find_best_partner_rate(
+            search_terms,
+            start_date,
+            end_date,
+            "Driver",
+            {"vehicle_type": vehicle}
+        )
+        if driver_rate:
+            result["driver"] = driver_rate
+            result["prompt_lines"].append(f"Vehicle: {vehicle} (HKE Partner Driver)")
+
+    guide_needed = guide.strip().lower() in {"with guide", "guide", "yes", "required"}
+    if guide_needed:
+        guide_rate = find_best_partner_rate(search_terms, start_date, end_date, "Guide")
+        if guide_rate:
+            result["guide"] = guide_rate
+            result["prompt_lines"].append("Guide: Available")
+
+    return result
+
+
+def apply_partner_context_to_itinerary(itinerary: Dict[str, Any], partner_context: Dict[str, Any]) -> Dict[str, Any]:
+    if not itinerary or not partner_context:
+        return itinerary
+
+    extra_info = itinerary.get("extraInfo") or {}
+    if partner_context.get("hotel"):
+        extra_info["hotel"] = f'{safe_str(extra_info.get("hotel")) or safe_str(partner_context["hotel"].get("hotel_category"), "Standard")} (HKE Verified Partner)'
+    if partner_context.get("driver"):
+        extra_info["vehicle"] = f'{safe_str(extra_info.get("vehicle")) or safe_str(partner_context["driver"].get("vehicle_type"), "Vehicle")} (HKE Partner Driver)'
+    if partner_context.get("guide"):
+        extra_info["guide"] = "Available"
+    itinerary["extraInfo"] = extra_info
+
+    if partner_context.get("hotel"):
+        line = "Stay will be arranged in verified HKE partner property according to selected category."
+        summary = safe_str(itinerary.get("summary"))
+        if line not in summary:
+            itinerary["summary"] = f"{summary} {line}".strip()
+
+    return itinerary
+
 # =========================================================
 # MODELS
 # =========================================================
@@ -1216,6 +1619,158 @@ class VerifyOTPRequest(BaseModel):
         return otp
 
 
+class CustomerProfileUpdateRequest(BaseModel):
+    phone: str
+    name: Optional[str] = ""
+    email: Optional[EmailStr] = None
+    consent_marketing: Optional[bool] = None
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        return safe_str(v)
+
+
+class PartnerRegisterRequest(BaseModel):
+    partner_type: str
+    business_name: str
+    contact_person: str
+    mobile: str
+    email: EmailStr
+    password: str
+
+    @field_validator("partner_type")
+    @classmethod
+    def validate_partner_type(cls, v):
+        value = safe_str(v)
+        if value not in {"Hotel", "Driver", "Guide"}:
+            raise ValueError("Partner type must be Hotel, Driver, or Guide")
+        return value
+
+    @field_validator("business_name", "contact_person")
+    @classmethod
+    def validate_required_text(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("This field is required")
+        return v.strip()
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Mobile number must be 10 digits")
+        return digits
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v):
+        value = safe_str(v)
+        if len(value) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return value
+
+
+class PartnerLoginRequest(BaseModel):
+    mobile: str
+    password: str
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Mobile number must be 10 digits")
+        return digits
+
+
+class PartnerRateBase(BaseModel):
+    partner_type: str
+    business_name: str
+    location: str
+    state: str
+    service_area: str
+    available_from: str
+    available_to: str
+    available: bool = True
+    notes: Optional[str] = ""
+    hotel_category: Optional[str] = None
+    room_type: Optional[str] = None
+    price_per_night: Optional[float] = None
+    meal_plan: Optional[str] = None
+    rooms_available: Optional[int] = None
+    total_rooms: Optional[int] = None
+    vehicle_type: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    per_day_rate: Optional[float] = None
+    per_km_rate: Optional[float] = None
+    driver_allowance: Optional[float] = None
+    language: Optional[str] = None
+    specialty: Optional[str] = None
+
+    @field_validator("partner_type")
+    @classmethod
+    def validate_partner_type(cls, v):
+        value = safe_str(v)
+        if value not in {"Hotel", "Driver", "Guide"}:
+            raise ValueError("Partner type must be Hotel, Driver, or Guide")
+        return value
+
+    @field_validator("business_name", "location", "state", "service_area")
+    @classmethod
+    def validate_required_text(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("This field is required")
+        return v.strip()
+
+    @model_validator(mode="after")
+    def validate_dates_and_fields(self):
+        start = parse_iso_date(self.available_from)
+        end = parse_iso_date(self.available_to)
+        if end < start:
+            raise ValueError("available_to must be on or after available_from")
+        if end > start + timedelta(days=62):
+            raise ValueError("available_to cannot exceed 2 months from available_from")
+
+        if self.partner_type == "Hotel":
+            if not safe_str(self.hotel_category) or not safe_str(self.room_type) or safe_float(self.price_per_night) <= 0:
+                raise ValueError("Hotel rates require hotel_category, room_type, and positive price_per_night")
+            if not safe_str(self.meal_plan):
+                raise ValueError("Hotel rates require meal_plan")
+            rooms_value = self.rooms_available if self.rooms_available is not None else self.total_rooms
+            if safe_int(rooms_value) <= 0:
+                raise ValueError("Hotel rates require positive rooms_available")
+            self.rooms_available = safe_int(rooms_value)
+
+        if self.partner_type == "Driver":
+            if not safe_str(self.vehicle_type) or not safe_str(self.vehicle_number):
+                raise ValueError("Driver rates require vehicle_type and vehicle_number")
+            if safe_float(self.per_day_rate) <= 0 and safe_float(self.per_km_rate) <= 0:
+                raise ValueError("Driver rates require per_day_rate or per_km_rate")
+
+        if self.partner_type == "Guide":
+            if not safe_str(self.language) or not safe_str(self.specialty) or safe_float(self.per_day_rate) <= 0:
+                raise ValueError("Guide rates require language, specialty, and positive per_day_rate")
+
+        return self
+
+
+class PartnerRateCreateRequest(PartnerRateBase):
+    pass
+
+
+class PartnerRateUpdateRequest(PartnerRateBase):
+    pass
+
+
 class AdminLoginRequest(BaseModel):
     username: str
     password: str
@@ -1272,12 +1827,14 @@ def root():
 @app.get("/health")
 def health():
     return {
+        "status": "ok",
         "ok": True,
         "openai_configured": bool(client),
         "razorpay_configured": bool(rz_client),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
         "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
         "msg91_dlt_template_configured": bool(MSG91_DLT_TEMPLATE_ID),
+        "msg91_dlt_template_version": MSG91_DLT_TEMPLATE_VERSION,
         "msg91_variable_name": MSG91_OTP_VARIABLE_NAME,
         "otp_bypass": OTP_BYPASS,
         "admin_login_enabled": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
@@ -1382,14 +1939,15 @@ def send_otp(payload: SendOTPRequest):
     except Exception as e:
         conn.rollback()
         conn.close()
-        raise HTTPException(status_code=500, detail=f"Unable to create OTP session: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to create OTP session right now")
     finally:
         conn.close()
 
     try:
         provider_response = send_msg91_otp(mobile, otp)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OTP send failed: {str(e)}")
+        logger.exception("OTP send failed for mobile=%s", mobile)
+        raise HTTPException(status_code=500, detail="Unable to send OTP right now")
 
     resp = {
         "ok": True,
@@ -1434,7 +1992,8 @@ def verify_otp(payload: VerifyOTPRequest):
             "ok": True,
             "message": "Already verified",
             "mobile": mobile,
-            "phone": mobile
+            "phone": mobile,
+            "verified": True
         }
 
     attempts = safe_int(row["attempts"], 0)
@@ -1462,13 +2021,22 @@ def verify_otp(payload: VerifyOTPRequest):
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    cur.execute("""
-        UPDATE otp_sessions
-        SET verified = 1
-        WHERE id = ?
-    """, (row["id"],))
-    conn.commit()
-    conn.close()
+    verified_at = datetime.utcnow().isoformat()
+
+    try:
+        cur.execute("""
+            UPDATE otp_sessions
+            SET verified = 1
+            WHERE id = ?
+        """, (row["id"],))
+        upsert_customer_profile_after_otp(cur, mobile, verified_at)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail="Unable to update customer profile right now")
+    finally:
+        conn.close()
 
     return {
         "ok": True,
@@ -1479,20 +2047,273 @@ def verify_otp(payload: VerifyOTPRequest):
     }
 
 
+@app.get("/api/customer/profile")
+def get_customer_profile(phone: str = Query(...)):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        raise HTTPException(status_code=400, detail="Phone must be 10 digits")
+    if not is_phone_verified(digits):
+        logger.warning("Unauthorized profile access attempt for phone=%s", digits)
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customer_profiles WHERE phone = ?", (digits,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+
+    return {
+        "ok": True,
+        "profile": serialize_customer_profile(row)
+    }
+
+
+@app.post("/api/customer/profile")
+def update_customer_profile(payload: CustomerProfileUpdateRequest):
+    now_ts = datetime.utcnow().isoformat()
+    email = safe_str(payload.email)
+    consent_provided = "consent_marketing" in payload.model_fields_set
+    consent_value = 1 if payload.consent_marketing else 0
+    if not is_phone_verified(payload.phone):
+        logger.warning("Unauthorized profile access attempt for phone=%s", payload.phone)
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT id FROM customer_profiles WHERE phone = ?", (payload.phone,))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute(
+                """
+                UPDATE customer_profiles
+                SET
+                    name = CASE WHEN ? <> '' THEN ? ELSE name END,
+                    email = CASE WHEN ? <> '' THEN ? ELSE email END,
+                    consent_marketing = CASE WHEN ? THEN ? ELSE consent_marketing END,
+                    last_activity = ?,
+                    source = ?
+                WHERE phone = ?
+                """,
+                (
+                    safe_str(payload.name),
+                    safe_str(payload.name),
+                    email,
+                    email,
+                    1 if consent_provided else 0,
+                    consent_value,
+                    now_ts,
+                    "website_profile_update",
+                    payload.phone
+                )
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO customer_profiles (
+                    phone, name, email, consent_marketing, source, last_activity
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.phone,
+                    safe_str(payload.name),
+                    email,
+                    consent_value if consent_provided else 1,
+                    "website_profile_update",
+                    now_ts
+                )
+            )
+        cur.execute("SELECT * FROM customer_profiles WHERE phone = ?", (payload.phone,))
+        row = cur.fetchone()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail="Unable to save customer profile right now")
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "message": "Customer profile saved successfully",
+        "profile": serialize_customer_profile(row)
+    }
+
+
 # =========================================================
 # AI ITINERARY
 # =========================================================
+
+# =========================================================
+# PARTNER PORTAL
+# =========================================================
+@app.post("/api/partners/register")
+def partner_register(payload: PartnerRegisterRequest):
+    partners = get_partners_collection()
+
+    if partners.find_one({"mobile": payload.mobile}):
+        raise HTTPException(status_code=409, detail="Partner already registered with this mobile number")
+
+    now_ts = datetime.utcnow().isoformat()
+    partner_doc = {
+        "partner_type": payload.partner_type,
+        "business_name": safe_str(payload.business_name),
+        "contact_person": safe_str(payload.contact_person),
+        "mobile": payload.mobile,
+        "email": safe_str(payload.email),
+        "password_hash": hash_password(payload.password),
+        "created_at": now_ts,
+        "updated_at": now_ts
+    }
+
+    inserted = partners.insert_one(partner_doc)
+    partner_doc["_id"] = inserted.inserted_id
+
+    token = secrets.token_urlsafe(32)
+    PARTNER_SESSIONS[token] = {
+        "partner_id": str(inserted.inserted_id),
+        "mobile": payload.mobile,
+        "partner_type": payload.partner_type,
+        "created_at": now_ts
+    }
+
+    return {
+        "ok": True,
+        "message": "Partner registered successfully",
+        "token": token,
+        "partner": serialize_partner(partner_doc)
+    }
+
+
+@app.post("/api/partners/login")
+def partner_login(payload: PartnerLoginRequest):
+    partners = get_partners_collection()
+    partner = partners.find_one({"mobile": payload.mobile})
+    if not partner or not verify_password(payload.password, safe_str(partner.get("password_hash"))):
+        raise HTTPException(status_code=401, detail="Invalid mobile number or password")
+
+    token = secrets.token_urlsafe(32)
+    PARTNER_SESSIONS[token] = {
+        "partner_id": str(partner.get("_id")),
+        "mobile": payload.mobile,
+        "partner_type": safe_str(partner.get("partner_type")),
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    return {
+        "ok": True,
+        "message": "Partner login successful",
+        "token": token,
+        "partner": serialize_partner(partner)
+    }
+
+
+@app.post("/api/partners/rates")
+def create_partner_rate(payload: PartnerRateCreateRequest, authorization: Optional[str] = Header(default=None)):
+    session = require_partner_token(authorization)
+    partners = get_partners_collection()
+    rates = get_partner_rates_collection()
+
+    partner = partners.find_one({"_id": ObjectId(session["partner_id"])})
+    if not partner:
+        raise HTTPException(status_code=404, detail="Partner account not found")
+
+    if safe_str(partner.get("partner_type")) != payload.partner_type:
+        raise HTTPException(status_code=400, detail="Partner type mismatch")
+
+    now_ts = datetime.utcnow().isoformat()
+    rate_doc = payload.model_dump()
+    rate_doc["business_name"] = safe_str(partner.get("business_name"))
+    rate_doc["partner_id"] = str(partner.get("_id"))
+    rate_doc["status"] = "pending"
+    rate_doc["available"] = bool(payload.available)
+    if rate_doc.get("partner_type") == "Hotel":
+        rate_doc["rooms_available"] = safe_int(rate_doc.get("rooms_available"), safe_int(rate_doc.get("total_rooms"), 0))
+    rate_doc["created_at"] = now_ts
+    rate_doc["updated_at"] = now_ts
+
+    inserted = rates.insert_one(rate_doc)
+    rate_doc["_id"] = inserted.inserted_id
+
+    return {"ok": True, "message": "Rate saved successfully", "rate": serialize_partner_rate(rate_doc)}
+
+
+@app.get("/api/partners/rates")
+def list_partner_rates(authorization: Optional[str] = Header(default=None)):
+    session = require_partner_token(authorization)
+    items = list(
+        get_partner_rates_collection()
+        .find({"partner_id": session["partner_id"]})
+        .sort("created_at", -1)
+    )
+    return {"ok": True, "rates": [serialize_partner_rate(item) for item in items]}
+
+
+@app.put("/api/partners/rates/{rate_id}")
+def update_partner_rate(rate_id: str, payload: PartnerRateUpdateRequest, authorization: Optional[str] = Header(default=None)):
+    session = require_partner_token(authorization)
+    rates = get_partner_rates_collection()
+
+    try:
+        oid = ObjectId(rate_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid rate id")
+
+    existing = rates.find_one({"_id": oid, "partner_id": session["partner_id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Rate not found")
+
+    if safe_str(existing.get("partner_type")) != payload.partner_type:
+        raise HTTPException(status_code=400, detail="Partner type cannot be changed")
+
+    update_doc = payload.model_dump()
+    update_doc["partner_id"] = session["partner_id"]
+    update_doc["business_name"] = safe_str(existing.get("business_name")) or safe_str(payload.business_name)
+    update_doc["status"] = "pending"
+    update_doc["available"] = bool(payload.available)
+    if update_doc.get("partner_type") == "Hotel":
+        update_doc["rooms_available"] = safe_int(update_doc.get("rooms_available"), safe_int(update_doc.get("total_rooms"), 0))
+    update_doc["updated_at"] = datetime.utcnow().isoformat()
+
+    rates.update_one({"_id": oid}, {"$set": update_doc})
+    updated = rates.find_one({"_id": oid})
+    return {"ok": True, "message": "Rate updated successfully", "rate": serialize_partner_rate(updated)}
+
+
+@app.delete("/api/partners/rates/{rate_id}")
+def delete_partner_rate(rate_id: str, authorization: Optional[str] = Header(default=None)):
+    session = require_partner_token(authorization)
+
+    try:
+        oid = ObjectId(rate_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid rate id")
+
+    result = get_partner_rates_collection().delete_one({"_id": oid, "partner_id": session["partner_id"]})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Rate not found")
+
+    return {"ok": True, "message": "Rate deleted successfully"}
+
+
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: PlannerRequest):
     data = payload.model_dump()
+    partner_context = get_partner_context_for_itinerary(data)
 
     try:
-        itinerary = call_openai_json(build_itinerary_prompt(data))
+        itinerary = call_openai_json(build_itinerary_prompt(data, partner_context=partner_context))
         source = "openai"
     except Exception as e:
         itinerary = fallback_itinerary(data)
         source = "fallback"
         print(f"AI itinerary fallback used: {e}")
+
+    itinerary = apply_partner_context_to_itinerary(itinerary, partner_context)
 
     try:
         send_itinerary_enquiry_email(data, itinerary)
@@ -1607,7 +2428,7 @@ def request_itinerary_change(payload: ItineraryChangeRequestCreate):
         request_id = cur.lastrowid
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Unable to save itinerary change request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to save itinerary change request right now")
     finally:
         conn.close()
 
@@ -1696,7 +2517,7 @@ def admin_review_itinerary_request(
         conn.commit()
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Unable to update itinerary request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to update itinerary request right now")
     finally:
         conn.close()
 
@@ -1746,7 +2567,7 @@ def create_payment_order(payload: RazorpayOrderRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Unable to create Razorpay order: {str(e)}"
+            detail="Unable to create Razorpay order right now"
         )
 
     return {
@@ -1849,7 +2670,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         conn.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Unable to save payment confirmation: {str(e)}"
+            detail="Unable to save payment confirmation right now"
         )
     finally:
         conn.close()
