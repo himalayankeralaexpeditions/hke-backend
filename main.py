@@ -534,29 +534,29 @@ def send_msg91_otp(mobile: str, otp: str):
     # IMPORTANT:
     # MSG91 OneAPI variable must match the template placeholder shown in MSG91.
     # Your approved template preview shows ##OTP##, so the payload key must be ##OTP##.
-    payload = {
-        "data": {
-            "sendTo": [
-                {
-                    "to": [
-                        {
-                            "mobiles": f"91{mobile}",
-                            "variables": {
-                                "##OTP##": {
-                                    "value": otp
-                                }
+   payload = {
+    "data": {
+        "sendTo": [
+            {
+                "to": [
+                    {
+                        "mobiles": f"91{mobile}",
+                        "variables": {
+                            "OTP": {
+                                "value": otp
                             }
                         }
-                    ],
-                    "variables": {
-                        "##OTP##": {
-                            "value": otp
-                        }
+                    }
+                ],
+                "variables": {
+                    "OTP": {
+                        "value": otp
                     }
                 }
-            ]
-        }
+            }
+        ]
     }
+}
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
