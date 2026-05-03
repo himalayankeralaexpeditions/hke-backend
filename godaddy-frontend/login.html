@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Login | Himalayan Kerala Expeditions</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg0:#070A10;
+      --bg1:#0B0F18;
+      --panel:rgba(255,255,255,.06);
+      --border:rgba(255,255,255,.12);
+      --text:#EAEFF7;
+      --muted:rgba(234,239,247,.72);
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      font-family:'Inter',system-ui,sans-serif;
+      background:
+        radial-gradient(900px 500px at 15% 10%, rgba(217,178,95,.12), transparent 60%),
+        radial-gradient(700px 440px at 85% 10%, rgba(240,208,138,.08), transparent 60%),
+        linear-gradient(180deg,var(--bg0),var(--bg1));
+      color:var(--text);
+    }
+
+    .card{
+      width:min(560px,100%);
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:24px;
+      padding:28px;
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(14px);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-bottom:18px;
+    }
+
+    .brand img{
+      width:54px;
+      height:54px;
+      object-fit:contain;
+      background:#fff;
+      border-radius:14px;
+      padding:8px;
+    }
+
+    .brand h1{
+      margin:0;
+      font-size:1.1rem;
+      font-weight:800;
+    }
+
+    .brand p{
+      margin:4px 0 0;
+      color:var(--gold2);
+      font-size:.92rem;
+    }
+
+    h2{
+      margin:0 0 8px;
+      font-size:1.75rem;
+      font-weight:800;
+    }
+
+    .sub{
+      color:var(--muted);
+      line-height:1.6;
+      margin-bottom:20px;
+    }
+
+    .label{
+      display:block;
+      margin-bottom:8px;
+      font-weight:700;
+      color:#f5e4b8;
+    }
+
+    .input{
+      width:100%;
+      padding:14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.08);
+      color:#fff;
+      outline:none;
+      margin-bottom:14px;
+      font-size:1rem;
+    }
+
+    .input::placeholder{
+      color:rgba(255,255,255,.42);
+    }
+
+    .btn{
+      border:none;
+      border-radius:14px;
+      padding:14px 18px;
+      font-weight:800;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:.2s ease;
+      min-height:52px;
+      width:100%;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#0b0f18;
+      margin-bottom:18px;
+    }
+
+    .btn-ghost{
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      border:1px solid var(--border);
+      margin-bottom:18px;
+    }
+
+    .btn-dark{
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      border:1px solid var(--border);
+      margin-top:4px;
+    }
+
+    .btn-back{
+      margin-top:12px;
+      background:transparent;
+      color:var(--muted);
+      border:1px solid var(--border);
+    }
+
+    .msg{
+      margin-top:16px;
+      padding:12px 14px;
+      border-radius:14px;
+      display:none;
+      font-weight:700;
+      line-height:1.5;
+    }
+
+    .msg.ok{
+      display:block;
+      background:rgba(46,204,113,.12);
+      border:1px solid rgba(46,204,113,.22);
+      color:#d8ffe7;
+    }
+
+    .msg.err{
+      display:block;
+      background:rgba(255,80,80,.12);
+      border:1px solid rgba(255,80,80,.22);
+      color:#ffd2d2;
+    }
+
+    .helper{
+      color:var(--muted);
+      font-size:.92rem;
+      margin:-6px 0 16px;
+    }
+  </style>
+
+<link rel="stylesheet" href="css/hke-polish.css">
+<script src="scripts/hke-auth-gate.js"></script>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <img src="media/logo.png" alt="HKE" width="550" height="550" decoding="async" />
+      <div>
+        <h1>Himalayan Kerala Expeditions</h1>
+        <p>We Plan. We Care.</p>
+      </div>
+    </div>
+
+    <h2>Login with OTP</h2>
+    <div class="sub">
+      Enter your mobile number to access your booking, order status, payment details, and cancellation options.
+    </div>
+
+    <label class="label" for="phone">Mobile Number</label>
+    <input
+      id="phone"
+      class="input"
+      type="text"
+      placeholder="India: 9876543210 or Intl: +1XXXXXXXXXX"
+      autocomplete="tel"
+    >
+
+    <button id="sendOtpBtn" class="btn btn-primary" type="button">Send OTP</button>
+
+    <label class="label" for="otp">OTP</label>
+    <input
+      id="otp"
+      class="input"
+      type="text"
+      placeholder="Enter OTP"
+      maxlength="6"
+      autocomplete="one-time-code"
+    >
+
+    <div class="helper">
+      By logging in, you agree to be contacted by Himalayan Kerala Expeditions for trip assistance, booking updates, and travel offers.
+    </div>
+
+    <button id="verifyOtpBtn" class="btn btn-ghost" type="button">Verify OTP</button>
+
+    <button id="openOrdersBtn" class="btn btn-dark" type="button">Open My Booking Page</button>
+
+    <a href="index.html" class="btn btn-back">Back to Home</a>
+
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <script>
+    (function () {
+      // IMPORTANT: replace this only if your Render backend URL is different
+      const API_BASE = "https://hke-backend.onrender.com";
+
+      const SEND_API = API_BASE + "/api/auth/send-otp";
+      const VERIFY_API = API_BASE + "/api/auth/verify-otp";
+      const HEALTH_API = API_BASE + "/health";
+
+      const phoneEl = document.getElementById("phone");
+      const otpEl = document.getElementById("otp");
+      const sendBtn = document.getElementById("sendOtpBtn");
+      const verifyBtn = document.getElementById("verifyOtpBtn");
+      const openOrdersBtn = document.getElementById("openOrdersBtn");
+      const msgEl = document.getElementById("msg");
+      const CUSTOMER_PROFILE_KEY = "HKE_CUSTOMER_PROFILE";
+
+      function setMsg(text, isErr = false) {
+        msgEl.className = "msg " + (isErr ? "err" : "ok");
+        msgEl.textContent = text;
+      }
+
+      function clearMsg() {
+        msgEl.className = "msg";
+        msgEl.textContent = "";
+      }
+
+      function normalizeForStorage(phone) {
+        const raw = String(phone || "").trim();
+        if (raw.startsWith("+")) return raw;
+        const digits = raw.replace(/\D/g, "");
+
+        if (digits.startsWith("91") && digits.length >= 12) return "+" + digits;
+        if (digits.length === 10) return digits;
+        return raw;
+      }
+
+      function saveLegacyKeys(profile) {
+        const phone = normalizeForStorage(profile?.phone || "");
+        if (!phone) return;
+
+        localStorage.setItem("hke_logged_in", "true");
+        localStorage.setItem("hke_customer_phone", phone);
+        localStorage.setItem("hke_customer_mobile", phone);
+        localStorage.setItem("user_phone", phone);
+        if (profile?.name) localStorage.setItem("user_name", profile.name);
+        if (profile?.email) localStorage.setItem("user_email", profile.email);
+      }
+
+      function getStoredProfile() {
+        try {
+          return JSON.parse(localStorage.getItem(CUSTOMER_PROFILE_KEY) || "{}");
+        } catch {
+          return {};
+        }
+      }
+
+      async function postJSON(url, body) {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const txt = await res.text();
+        let data = null;
+
+        try {
+          data = JSON.parse(txt);
+        } catch {
+          data = { raw: txt };
+        }
+
+        if (!res.ok) {
+          throw new Error(data?.detail || data?.message || "Request failed");
+        }
+
+        return data;
+      }
+
+      sendBtn.addEventListener("click", async () => {
+        clearMsg();
+
+        const phone = String(phoneEl.value || "").trim();
+        if (!phone) {
+          setMsg("Please enter your mobile number.", true);
+          return;
+        }
+
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Sending...";
+
+        try {
+          const resp = await postJSON(SEND_API, { phone });
+          setMsg(resp.message || `OTP sent successfully via ${resp.provider}.`);
+        } catch (err) {
+          setMsg(err.message || "Unable to send OTP.", true);
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "Send OTP";
+        }
+      });
+
+      verifyBtn.addEventListener("click", async () => {
+        clearMsg();
+
+        const phone = String(phoneEl.value || "").trim();
+        const otp = String(otpEl.value || "").trim();
+
+        if (!phone) {
+          setMsg("Please enter your mobile number.", true);
+          return;
+        }
+
+        if (!otp) {
+          setMsg("Please enter OTP.", true);
+          return;
+        }
+
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = "Verifying...";
+
+        try {
+          await postJSON(VERIFY_API, { phone, otp });
+
+          const savedPhone = normalizeForStorage(phone);
+          const existingProfile = getStoredProfile();
+          const customerProfile = {
+            phone: savedPhone,
+            name: existingProfile.name || localStorage.getItem("HKE_CUSTOMER_NAME") || "",
+            email: existingProfile.email || localStorage.getItem("HKE_CUSTOMER_EMAIL") || "",
+            updatedAt: new Date().toISOString()
+          };
+          if (window.HKEAuthGate) {
+            window.HKEAuthGate.saveCustomerLogin(savedPhone, customerProfile);
+          } else {
+            localStorage.setItem("HKE_CUSTOMER_LOGGED_IN", "true");
+            localStorage.setItem("HKE_CUSTOMER_PHONE", savedPhone);
+            localStorage.setItem("HKE_CUSTOMER_LOGIN_TIME", new Date().toISOString());
+            localStorage.setItem("HKE_ORDER_LOOKUP_MODE", "phone");
+            localStorage.setItem("HKE_ORDER_LOOKUP_VALUE", savedPhone);
+            localStorage.setItem("HKE_OTP_VERIFIED_PHONE", savedPhone);
+            localStorage.setItem(CUSTOMER_PROFILE_KEY, JSON.stringify(customerProfile));
+          }
+          saveLegacyKeys(customerProfile);
+
+          setMsg("OTP verified successfully. Redirecting...");
+
+          setTimeout(() => {
+            if (window.HKEAuthGate) {
+              window.HKEAuthGate.goAfterLogin("my-orders.html");
+            } else {
+              window.location.href = "my-orders.html";
+            }
+          }, 500);
+        } catch (err) {
+          setMsg(err.message || "OTP verification failed.", true);
+        } finally {
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = "Verify OTP";
+        }
+      });
+
+      openOrdersBtn.addEventListener("click", () => {
+        const phone = normalizeForStorage(phoneEl.value || "");
+        const verifiedPhone = localStorage.getItem("HKE_CUSTOMER_PHONE") || localStorage.getItem("HKE_OTP_VERIFIED_PHONE");
+
+        if (!phone) {
+          setMsg("Please enter your mobile number.", true);
+          return;
+        }
+
+        if (!verifiedPhone || verifiedPhone !== phone) {
+          setMsg("Please verify OTP first.", true);
+          return;
+        }
+
+        window.location.href = "my-orders.html";
+      });
+    })();
+  </script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

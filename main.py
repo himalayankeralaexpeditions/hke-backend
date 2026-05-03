@@ -925,16 +925,29 @@ def send_msg91_otp(mobile: str, otp: str):
     if not MSG91_AUTH_KEY:
         raise RuntimeError("MSG91_AUTH_KEY not configured")
 
-    if not MSG91_SMS_FLOW_ID:
-        raise RuntimeError("MSG91_SMS_FLOW_ID not configured")
-
-    variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
-    url = "https://control.msg91.com/api/v5/flow/"
+    url = "https://control.msg91.com/api/v5/oneapi/api/flow/otp-login-flow-hke/run"
     payload = {
-        "flow_id": MSG91_SMS_FLOW_ID,
-        "sender": MSG91_SENDER_ID,
-        "mobiles": f"91{mobile}",
-        variable_name: otp
+        "data": {
+            "sendTo": [
+                {
+                    "to": [
+                        {
+                            "mobiles": f"91{mobile}",
+                            "variables": {
+                                "OTP": {
+                                    "value": otp
+                                }
+                            }
+                        }
+                    ],
+                    "variables": {
+                        "OTP": {
+                            "value": otp
+                        }
+                    }
+                }
+            ]
+        }
     }
 
     headers = {
@@ -945,7 +958,7 @@ def send_msg91_otp(mobile: str, otp: str):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
     except requests.RequestException as exc:
-        logger.exception("MSG91 OTP request transport failure for mobile=%s", mobile)
+        logger.exception("MSG91 OneAPI OTP request transport failure for mobile=%s", mobile)
         raise RuntimeError(f"MSG91 request failed: {exc}") from exc
 
     try:
@@ -953,9 +966,15 @@ def send_msg91_otp(mobile: str, otp: str):
     except Exception:
         response_data = {"raw": response.text}
 
+    logger.info(
+        "MSG91 OneAPI OTP provider status for mobile=%s status=%s",
+        mobile,
+        response.status_code
+    )
+
     if response.status_code not in (200, 201, 202):
         logger.error(
-            "MSG91 OTP send failed for mobile=%s status=%s response=%s",
+            "MSG91 OneAPI OTP send failed for mobile=%s status=%s response=%s",
             mobile,
             response.status_code,
             response.text
@@ -964,19 +983,13 @@ def send_msg91_otp(mobile: str, otp: str):
 
     lower_dump = json.dumps(response_data).lower()
 
-    if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
+    if "error" in lower_dump or "failed" in lower_dump or "company details not found" in lower_dump:
         logger.error(
-            "MSG91 OTP rejected for mobile=%s response=%s",
+            "MSG91 OneAPI OTP rejected for mobile=%s response=%s",
             mobile,
             json.dumps(response_data, default=str)
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
-
-    logger.info(
-        "MSG91 OTP response for mobile=%s response=%s",
-        mobile,
-        json.dumps(response_data, default=str)
-    )
 
     return response_data
 
@@ -2355,9 +2368,6 @@ def send_otp(payload: SendOTPRequest):
 
     if OTP_BYPASS:
         resp["debug_otp"] = otp
-
-    if provider_response:
-        resp["provider_response"] = provider_response
 
     return resp
 

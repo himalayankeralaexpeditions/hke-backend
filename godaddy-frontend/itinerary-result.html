@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Generated Itinerary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Professional AI-generated itinerary by Himalayan Kerala Expeditions." />
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root{
+      --bg:#070A10;
+      --panel:rgba(8,13,22,.78);
+      --panel2:rgba(255,255,255,.05);
+      --stroke:rgba(255,255,255,.10);
+      --gold:#D8B768;
+      --gold2:#F0D08A;
+      --text:#F4F7FB;
+      --muted:rgba(244,247,251,.74);
+      --ok:#baf7c8;
+      --err:#ffd1d1;
+      --radius-xl:28px;
+      --radius-lg:22px;
+      --radius-md:16px;
+      --shadow:0 20px 60px rgba(0,0,0,.34);
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      font-family:'Inter',sans-serif;
+      color:var(--text);
+      background:
+        linear-gradient(180deg, rgba(5,8,12,.86), rgba(6,10,15,.92)),
+        url('media/home_bg.png') center/cover fixed no-repeat;
+      min-height:100vh;
+    }
+
+    .wrap{
+      width:min(1240px,92%);
+      margin:24px auto 60px;
+    }
+
+    .glass{
+      background:var(--panel);
+      border:1px solid var(--stroke);
+      border-radius:var(--radius-xl);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      box-shadow:var(--shadow);
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      padding:18px 20px;
+      margin-bottom:18px;
+      flex-wrap:wrap;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      min-width:0;
+    }
+
+    .brand-logo{
+      width:72px;
+      height:72px;
+      border-radius:20px;
+      background:#fff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+    }
+
+    .brand-logo img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      padding:8px;
+    }
+
+    .brand-copy h1{
+      margin:0;
+      font-size:clamp(24px,3vw,36px);
+      font-weight:800;
+      line-height:1.05;
+      letter-spacing:-.03em;
+    }
+
+    .brand-copy p{
+      margin:6px 0 0;
+      color:var(--gold);
+      font-size:clamp(15px,1.8vw,20px);
+      font-weight:700;
+    }
+
+    .brand-link{
+      color:var(--muted);
+      text-decoration:none;
+      font-weight:700;
+    }
+
+    .hero{
+      padding:28px;
+      margin-bottom:18px;
+    }
+
+    .hero-title{
+      margin:0 0 12px;
+      font-size:clamp(30px,4vw,56px);
+      line-height:1.03;
+      font-weight:800;
+      letter-spacing:-.04em;
+      color:var(--gold);
+      max-width:1000px;
+    }
+
+    .hero-summary{
+      margin:0;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.85;
+      max-width:930px;
+    }
+
+    .hero-cta{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:22px;
+    }
+
+    .btn{
+      border:none;
+      text-decoration:none;
+      cursor:pointer;
+      padding:14px 22px;
+      border-radius:999px;
+      font-weight:800;
+      font-size:16px;
+      font-family:inherit;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:transform .15s ease, filter .15s ease, background .15s ease;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#111;
+    }
+
+    .btn-secondary{
+      color:#fff;
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.16);
+    }
+
+    .section{
+      padding:26px;
+      margin-bottom:18px;
+    }
+
+    .section-title{
+      margin:0 0 16px;
+      color:var(--gold);
+      font-size:clamp(22px,2.4vw,34px);
+      font-weight:800;
+      letter-spacing:-.03em;
+    }
+
+    .section-sub{
+      margin:-4px 0 18px;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+
+    .info-card{
+      background:var(--panel2);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;
+      padding:16px 16px 14px;
+      min-height:auto;
+    }
+
+    .info-card h4{
+      margin:0 0 8px;
+      font-size:14px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .info-card p{
+      margin:0;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+
+    .list-card{
+      background:var(--panel2);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:22px;
+      padding:18px;
+    }
+
+    .clean-list{
+      list-style:none;
+      margin:0;
+      padding:0;
+    }
+
+    .clean-list li{
+      position:relative;
+      padding-left:22px;
+      margin-bottom:10px;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.8;
+    }
+
+    .clean-list li:last-child{
+      margin-bottom:0;
+    }
+
+    .clean-list li::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:11px;
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      box-shadow:0 0 0 4px rgba(216,183,104,.10);
+    }
+
+    .day-card{
+      background:rgba(255,255,255,.045);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:24px;
+      padding:20px;
+      margin-bottom:16px;
+    }
+
+    .day-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+
+    .day-head-left h3{
+      margin:0;
+      font-size:clamp(22px,2.6vw,32px);
+      font-weight:800;
+      letter-spacing:-.03em;
+      color:#fff;
+    }
+
+    .day-route{
+      margin-top:8px;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.7;
+    }
+
+    .day-date{
+      color:var(--gold);
+      font-size:20px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .mini-grid{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+      margin-bottom:14px;
+    }
+
+    .mini-card{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px;
+      min-height:auto;
+    }
+
+    .mini-card h5{
+      margin:0 0 8px;
+      font-size:14px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .mini-card p{
+      margin:0;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+
+    .activity-box{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;
+      padding:16px;
+    }
+
+    .activity-box h5{
+      margin:0 0 12px;
+      font-size:16px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .note-box{
+      margin-top:14px;
+      background:linear-gradient(180deg, rgba(216,183,104,.10), rgba(216,183,104,.05));
+      border:1px solid rgba(216,183,104,.16);
+      border-radius:18px;
+      padding:14px 16px;
+      color:#F5E4B6;
+      font-size:15px;
+      line-height:1.75;
+    }
+
+    .edit-wrap{
+      display:none;
+      margin-top:18px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:22px;
+      padding:18px;
+    }
+
+    .edit-wrap.open{
+      display:block;
+    }
+
+    .edit-wrap h3{
+      margin:0 0 10px;
+      color:var(--gold);
+      font-size:1.35rem;
+      font-weight:800;
+    }
+
+    .edit-wrap p{
+      margin:0 0 14px;
+      color:var(--muted);
+      line-height:1.8;
+    }
+
+    .edit-wrap textarea{
+      width:100%;
+      min-height:140px;
+      padding:14px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.24);
+      color:var(--text);
+      resize:vertical;
+      font:inherit;
+      outline:none;
+    }
+
+    .edit-actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+
+    .edit-status{
+      display:none;
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius:16px;
+      font-weight:700;
+      line-height:1.7;
+    }
+
+    .edit-status.ok{
+      display:block;
+      background:rgba(34,103,61,.24);
+      border:1px solid rgba(120,255,160,.22);
+      color:var(--ok);
+    }
+
+    .edit-status.err{
+      display:block;
+      background:rgba(110,28,28,.24);
+      border:1px solid rgba(255,155,155,.22);
+      color:var(--err);
+    }
+
+    .empty{
+      padding:22px;
+      color:var(--muted);
+      line-height:1.8;
+    }
+
+    .muted-note{
+      margin-top:10px;
+      color:rgba(255,255,255,.56);
+      font-size:13px;
+    }
+
+    @media (max-width: 980px){
+      .grid-2,
+      .grid-3,
+      .mini-grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media (max-width: 640px){
+      .wrap{
+        width:min(96%,96%);
+        margin:16px auto 40px;
+      }
+
+      .topbar,
+      .hero,
+      .section{
+        padding:18px;
+      }
+
+      .hero-cta,
+      .edit-actions{
+        width:100%;
+      }
+
+      .hero-cta .btn,
+      .edit-actions .btn{
+        width:100%;
+      }
+
+      .brand-logo{
+        width:58px;
+        height:58px;
+      }
+
+      .brand-copy h1{
+        font-size:22px;
+      }
+
+      .brand-copy p{
+        font-size:15px;
+      }
+    }
+
+    @media print{
+      body{
+        background:#fff !important;
+        color:#000 !important;
+      }
+      .hero-cta,
+      .edit-wrap,
+      .muted-note{
+        display:none !important;
+      }
+      .glass,
+      .info-card,
+      .mini-card,
+      .list-card,
+      .activity-box,
+      .day-card{
+        background:#fff !important;
+        color:#000 !important;
+        box-shadow:none !important;
+        border:1px solid #ddd !important;
+        backdrop-filter:none !important;
+      }
+    }
+  </style>
+
+<link rel="stylesheet" href="css/hke-polish.css">
+<script src="scripts/hke-auth-gate.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar glass">
+      <div class="brand">
+        <div class="brand-logo">
+          <img src="media/logo.png" alt="HKE Logo" width="550" height="550" decoding="async" onerror="this.style.display='none'" />
+        </div>
+        <div class="brand-copy">
+          <h1>Himalayan Kerala Expeditions</h1>
+          <p>We Plan. We Care.</p>
+        </div>
+      </div>
+
+      <a href="ai-planner.html" class="brand-link">Back to Planner</a>
+    </div>
+
+    <section class="hero glass">
+      <h2 class="hero-title" id="tripTitle">Generated Itinerary</h2>
+      <p class="hero-summary" id="tripSummary">Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences.</p>
+
+      <div class="hero-cta">
+        <a id="careAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Talk to Customer Care</a>
+        <a id="messageAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">WhatsApp Message</a>
+        <button id="editAction" class="btn btn-primary" type="button">Edit Itinerary</button>
+      </div>
+
+      <div id="edit-itinerary" class="edit-wrap">
+        <h3>Edit Itinerary</h3>
+        <p>Describe what you want changed. This uses the existing AI chat edit flow and refreshes the itinerary on this page.</p>
+        <textarea id="editPrompt" placeholder="Example: Reduce long drives, make day 2 more relaxed, and add one scenic stop near Munnar."></textarea>
+        <div class="edit-actions">
+          <button id="applyEditBtn" class="btn btn-primary" type="button">Apply Edit</button>
+          <button id="closeEditBtn" class="btn btn-secondary" type="button">Close</button>
+        </div>
+        <div id="editStatus" class="edit-status"></div>
+      </div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Trip Overview</h3>
+      <div class="grid-2" id="metaGrid"></div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Highlights</h3>
+      <div class="list-card">
+        <ul class="clean-list" id="highlightsList"></ul>
+      </div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Trip Preferences</h3>
+      <div class="grid-2" id="extraGrid"></div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Day-wise Itinerary</h3>
+      <p class="section-sub">Prepared with practical pacing, travel comfort, sightseeing flow, and destination suitability in mind.</p>
+      <div id="daysWrap"></div>
+    </section>
+
+    <section class="section glass">
+      <div class="grid-3">
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Inclusions</h3>
+          <ul class="clean-list" id="inclusionsList"></ul>
+        </div>
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Exclusions</h3>
+          <ul class="clean-list" id="exclusionsList"></ul>
+        </div>
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Terms</h3>
+          <ul class="clean-list" id="termsList"></ul>
+        </div>
+      </div>
+
+      <div class="muted-note">
+        This itinerary is professionally prepared for planning purposes and may be refined during final confirmation.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = "https://hke-backend.onrender.com";
+    const API_CHAT = `${API_BASE}/api/ai/chat`;
+    const API_WHATSAPP_LOG = `${API_BASE}/api/whatsapp/log`;
+    const COMPANY_PHONE = "919797294747";
+    const CUSTOMER_PROFILE_KEY = "HKE_CUSTOMER_PROFILE";
+
+    const $ = (id) => document.getElementById(id);
+
+    let currentCustomer = null;
+    let currentItinerary = null;
+
+    function safeJSON(value) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+
+    function safe(value, fallback = "") {
+      if (value === null || value === undefined || value === "") return fallback;
+      return String(value);
+    }
+
+    function escapeHTML(str = "") {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function getStoredPlan() {
+      return safeJSON(localStorage.getItem("hkeLatestTripPlan")) || {};
+    }
+
+    function getStoredCustomerProfile() {
+      return safeJSON(localStorage.getItem(CUSTOMER_PROFILE_KEY)) || {};
+    }
+
+    function cleanPhone(value = "") {
+      return String(value).replace(/\D/g, "").slice(0, 10);
+    }
+
+    function persistCustomerProfile() {
+      const existing = getStoredCustomerProfile();
+      const next = {
+        ...existing,
+        phone: cleanPhone(currentCustomer?.phone || existing.phone || ""),
+        name: safe(currentCustomer?.name || existing.name || ""),
+        email: safe(currentCustomer?.email || existing.email || ""),
+        lastDestination: safe(currentCustomer?.destination || currentItinerary?.meta?.destination || existing.lastDestination || ""),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (!next.phone) return;
+
+      localStorage.setItem(CUSTOMER_PROFILE_KEY, JSON.stringify(next));
+      localStorage.setItem("HKE_CUSTOMER_PHONE", next.phone);
+      localStorage.setItem("HKE_OTP_VERIFIED_PHONE", next.phone);
+      localStorage.setItem("HKE_CUSTOMER_NAME", next.name || "");
+      localStorage.setItem("HKE_CUSTOMER_EMAIL", next.email || "");
+      localStorage.setItem("HKE_ORDER_LOOKUP_MODE", "phone");
+      localStorage.setItem("HKE_ORDER_LOOKUP_VALUE", next.phone);
+    }
+
+    function itineraryToText(customer, itinerary) {
+      const meta = itinerary?.meta || {};
+      const extra = itinerary?.extraInfo || {};
+      const days = itinerary?.days || [];
+
+      const lines = [
+        itinerary?.title || `${customer?.destination || "Trip"} Itinerary`,
+        "",
+        `Name: ${customer?.name || "-"}`,
+        `Mobile: ${customer?.phone || "-"}`,
+        `Destination: ${meta.destination || customer?.destination || "-"}`,
+        `Route: ${meta.route || (customer?.places || []).join(", ") || "-"}`,
+        `Dates: ${meta.dates || `${customer?.startDate || "-"} to ${customer?.endDate || "-"}`}`,
+        `Travellers: ${meta.travellers || customer?.travellers || "-"}`,
+        `Rooms: ${meta.rooms || customer?.rooms || "-"}`,
+        `Budget: ${extra.budget || customer?.budget || "-"}`,
+        `Travel Type: ${extra.travelType || customer?.travelType || "-"}`,
+        `Hotel: ${extra.hotel || customer?.hotelClass || "-"}`,
+        `Vehicle: ${extra.vehicle || customer?.vehicle || "-"}`,
+        "",
+        itinerary?.summary || "Generated itinerary details:"
+      ];
+
+      days.forEach((day) => {
+        lines.push("");
+        lines.push(`Day ${day.day}: ${day.title || ""}`.trim());
+        if (day.route) lines.push(`Route: ${day.route}`);
+        (day.activities || []).forEach((activity) => lines.push(`- ${activity}`));
+      });
+
+      return lines.join("\n").trim();
+    }
+
+    function buildCustomerCareUrl() {
+      const destination = currentCustomer?.destination || currentItinerary?.meta?.destination || "your trip";
+      const msg = encodeURIComponent(
+        `Hello HKE Customer Care, I need help with my AI trip plan for ${destination}.`
+      );
+      return `https://wa.me/${COMPANY_PHONE}?text=${msg}`;
+    }
+
+    function buildItineraryMessageUrl() {
+      const text = encodeURIComponent(
+        `Hello HKE Team,\n\nPlease find my generated itinerary below.\n\n${itineraryToText(currentCustomer, currentItinerary)}`
+      );
+      return `https://wa.me/${COMPANY_PHONE}?text=${text}`;
+    }
+
+    async function logWhatsAppEvent(payload) {
+      try {
+        await fetch(API_WHATSAPP_LOG, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (_error) {
+        // WhatsApp open should continue even if logging is unavailable.
+      }
+    }
+
+    function openLoggedWhatsApp(url, payload) {
+      logWhatsAppEvent(payload).finally(() => {
+        window.open(url, "_blank", "noopener");
+      });
+    }
+
+    function updateActionLinks() {
+      const careUrl = buildCustomerCareUrl();
+      const messageUrl = buildItineraryMessageUrl();
+      $("careAction").href = careUrl;
+      $("messageAction").href = messageUrl;
+
+      $("careAction").onclick = function (event) {
+        event.preventDefault();
+        openLoggedWhatsApp(careUrl, {
+          phone: cleanPhone(currentCustomer?.phone || ""),
+          messageType: "customer_care",
+          message: `AI itinerary customer care request for ${currentCustomer?.destination || currentItinerary?.meta?.destination || "trip"}`,
+          status: "open_requested"
+        });
+      };
+
+      $("messageAction").onclick = function (event) {
+        event.preventDefault();
+        openLoggedWhatsApp(messageUrl, {
+          phone: cleanPhone(currentCustomer?.phone || ""),
+          messageType: "itinerary_share",
+          message: itineraryToText(currentCustomer, currentItinerary),
+          status: "open_requested"
+        });
+      };
+    }
+
+    function addList(id, items, fallbackText = "No details available.") {
+      const el = $(id);
+      el.innerHTML = "";
+
+      if (!items || !items.length) {
+        el.innerHTML = `<li>${fallbackText}</li>`;
+        return;
+      }
+
+      items.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        el.appendChild(li);
+      });
+    }
+
+    function addInfoGrid(id, obj, labels) {
+      const wrap = $(id);
+      wrap.innerHTML = "";
+
+      labels.forEach(([key, label]) => {
+        const div = document.createElement("div");
+        div.className = "info-card";
+        div.innerHTML = `
+          <h4>${label}</h4>
+          <p>${safe(obj?.[key], "-")}</p>
+        `;
+        wrap.appendChild(div);
+      });
+    }
+
+    function renderDays(days) {
+      const wrap = $("daysWrap");
+      wrap.innerHTML = "";
+
+      if (!days || !days.length) {
+        wrap.innerHTML = `<div class="list-card"><p class="empty">No day-wise itinerary available.</p></div>`;
+        return;
+      }
+
+      days.forEach((day) => {
+        const activities = (day.activities || [])
+          .map((activity) => `<li>${escapeHTML(activity)}</li>`)
+          .join("");
+
+        const div = document.createElement("div");
+        div.className = "day-card";
+        div.innerHTML = `
+          <div class="day-head">
+            <div class="day-head-left">
+              <h3>Day ${safe(day.day)} - ${safe(day.title)}</h3>
+              <div class="day-route">${safe(day.route)}</div>
+            </div>
+            <div class="day-date">${safe(day.date)}</div>
+          </div>
+
+          <div class="mini-grid">
+            <div class="mini-card">
+              <h5>Route</h5>
+              <p>${safe(day.route, "As per itinerary")}</p>
+            </div>
+            <div class="mini-card">
+              <h5>Hotel</h5>
+              <p>${safe(day.hotel, "As per selected hotel category")}</p>
+            </div>
+            <div class="mini-card">
+              <h5>Meals</h5>
+              <p>${safe(day.meals, "As per package")}</p>
+            </div>
+          </div>
+
+          <div class="activity-box">
+            <h5>Activities</h5>
+            <ul class="clean-list">${activities || "<li>No activities listed.</li>"}</ul>
+          </div>
+
+          <div class="note-box">${safe(day.notes, "Sightseeing sequence may change slightly depending on local conditions and guest comfort.")}</div>
+        `;
+        wrap.appendChild(div);
+      });
+    }
+
+    function renderAll() {
+      currentItinerary = currentItinerary || {};
+
+      $("tripTitle").textContent = safe(currentItinerary.title, "Generated Itinerary");
+      $("tripSummary").textContent = safe(
+        currentItinerary.summary,
+        "Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences."
+      );
+
+      addInfoGrid("metaGrid", currentItinerary.meta || {}, [
+        ["destination", "Destination"],
+        ["route", "Route"],
+        ["dates", "Dates"],
+        ["travellers", "Travellers"],
+        ["rooms", "Rooms"],
+        ["tripStyle", "Trip Style"]
+      ]);
+
+      addInfoGrid("extraGrid", currentItinerary.extraInfo || {}, [
+        ["budget", "Budget"],
+        ["travelType", "Travel Type"],
+        ["hotel", "Hotel Category"],
+        ["vehicle", "Vehicle"],
+        ["guide", "Guide"],
+        ["food", "Food"],
+        ["style", "Travel Style"],
+        ["notes", "Special Notes"]
+      ]);
+
+      addList("highlightsList", currentItinerary.highlights || [], "Highlights will appear here.");
+      addList("inclusionsList", currentItinerary.inclusions || [], "Inclusions will appear here.");
+      addList("exclusionsList", currentItinerary.exclusions || [], "Exclusions will appear here.");
+      addList("termsList", currentItinerary.terms || [], "Terms will appear here.");
+      renderDays(currentItinerary.days || []);
+      updateActionLinks();
+    }
+
+    function persistPlan() {
+      sessionStorage.setItem("hke_itinerary_data", JSON.stringify(currentItinerary || {}));
+      sessionStorage.setItem("hke_customer_data", JSON.stringify(currentCustomer || {}));
+      sessionStorage.setItem("hke_itinerary_text", itineraryToText(currentCustomer, currentItinerary));
+
+      const latestPlan = getStoredPlan();
+      latestPlan.customer = currentCustomer || latestPlan.customer || {};
+      latestPlan.itinerary = currentItinerary || latestPlan.itinerary || {};
+      latestPlan.updatedAt = new Date().toISOString();
+      localStorage.setItem("hkeLatestTripPlan", JSON.stringify(latestPlan));
+      persistCustomerProfile();
+    }
+
+    async function postJSON(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      const text = await res.text();
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { text };
+      }
+
+      if (!res.ok) {
+        const err = data?.detail || data?.message || data?.error || text || `HTTP ${res.status}`;
+        throw new Error(typeof err === "string" ? err : JSON.stringify(err));
+      }
+
+      return data;
+    }
+
+    function showEditStatus(text = "", type = "") {
+      const box = $("editStatus");
+      box.className = "edit-status";
+      box.textContent = text;
+      if (!text) return;
+      if (type === "ok") box.classList.add("ok");
+      if (type === "err") box.classList.add("err");
+    }
+
+    function parseEditedDays(text) {
+      const matches = [...String(text || "").matchAll(/Day\s+(\d+)\s*[:\-]?\s*(.*?)(?=(?:\n\s*Day\s+\d+\s*[:\-]?)|$)/gis)];
+      if (!matches.length) return [];
+
+      return matches.map((match, index) => {
+        const body = (match[2] || "").trim();
+        const lines = body.split("\n").map((line) => line.trim()).filter(Boolean);
+        const title = lines.shift() || `Updated Day ${index + 1}`;
+        const activities = lines.map((line) => line.replace(/^[-•]\s*/, "")).filter(Boolean);
+
+        return {
+          day: Number(match[1]) || index + 1,
+          title,
+          route: "",
+          date: "",
+          activities,
+          hotel: "",
+          meals: "",
+          notes: "Updated through AI itinerary edit."
+        };
+      });
+    }
+
+    function normalizeEditedItinerary(candidate) {
+      if (!candidate || typeof candidate !== "object") return null;
+
+      const next = JSON.parse(JSON.stringify(currentItinerary || {}));
+
+      if (candidate.title) next.title = candidate.title;
+      if (candidate.summary) next.summary = candidate.summary;
+      if (candidate.meta) next.meta = { ...(next.meta || {}), ...candidate.meta };
+      if (candidate.extraInfo) next.extraInfo = { ...(next.extraInfo || {}), ...candidate.extraInfo };
+      if (Array.isArray(candidate.highlights)) next.highlights = candidate.highlights;
+      if (Array.isArray(candidate.inclusions)) next.inclusions = candidate.inclusions;
+      if (Array.isArray(candidate.exclusions)) next.exclusions = candidate.exclusions;
+      if (Array.isArray(candidate.terms)) next.terms = candidate.terms;
+      if (Array.isArray(candidate.days) && candidate.days.length) next.days = candidate.days;
+      if (candidate.rawText) next.rawText = candidate.rawText;
+
+      return next;
+    }
+
+    function inferEditedItinerary(response) {
+      const candidates = [
+        response?.itinerary,
+        response?.updatedItinerary,
+        response?.updated_itinerary,
+        response?.data?.itinerary,
+        response?.result?.itinerary
+      ];
+
+      for (const candidate of candidates) {
+        const normalized = normalizeEditedItinerary(candidate);
+        if (normalized) return normalized;
+      }
+
+      const textCandidate = [
+        response?.reply,
+        response?.message,
+        response?.text,
+        response?.content,
+        response?.answer,
+        typeof response?.result === "string" ? response.result : ""
+      ].find((item) => typeof item === "string" && item.trim());
+
+      if (!textCandidate) {
+        throw new Error("The AI edit response did not include updated itinerary content.");
+      }
+
+      const next = JSON.parse(JSON.stringify(currentItinerary || {}));
+      next.summary = textCandidate.trim();
+      next.rawText = textCandidate.trim();
+
+      const parsedDays = parseEditedDays(textCandidate);
+      if (parsedDays.length) next.days = parsedDays;
+
+      return next;
+    }
+
+    async function applyEdit() {
+      const instruction = $("editPrompt").value.trim();
+      if (!instruction) {
+        showEditStatus("Please describe what should be changed in the itinerary.", "err");
+        return;
+      }
+
+      showEditStatus("Updating itinerary...", "ok");
+      $("applyEditBtn").disabled = true;
+
+      try {
+        const response = await postJSON(API_CHAT, {
+          message: instruction,
+          instruction,
+          current_itinerary: JSON.stringify(currentItinerary || {}),
+          itinerary: JSON.stringify(currentItinerary || {}),
+          customer_details: currentCustomer || {},
+          context: currentCustomer || {}
+        });
+
+        currentItinerary = inferEditedItinerary(response);
+        persistPlan();
+        renderAll();
+        showEditStatus("Itinerary updated successfully.", "ok");
+      } catch (err) {
+        showEditStatus(err.message || "Unable to update itinerary right now.", "err");
+      } finally {
+        $("applyEditBtn").disabled = false;
+      }
+    }
+
+    function toggleEditPanel(forceOpen) {
+      const panel = $("edit-itinerary");
+      const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : !panel.classList.contains("open");
+      panel.classList.toggle("open", shouldOpen);
+      if (shouldOpen) $("editPrompt").focus();
+    }
+
+    function init() {
+      const storedPlan = getStoredPlan();
+      const storedProfile = getStoredCustomerProfile();
+      currentCustomer =
+        safeJSON(sessionStorage.getItem("hke_customer_data")) ||
+        storedPlan.customer ||
+        storedProfile ||
+        {};
+      currentItinerary =
+        safeJSON(sessionStorage.getItem("hke_itinerary_data")) ||
+        storedPlan.itinerary ||
+        {};
+
+      persistCustomerProfile();
+      renderAll();
+
+      $("editAction").addEventListener("click", () => toggleEditPanel(true));
+      $("closeEditBtn").addEventListener("click", () => toggleEditPanel(false));
+      $("applyEditBtn").addEventListener("click", applyEdit);
+
+      if (window.location.hash === "#edit-itinerary") {
+        toggleEditPanel(true);
+      }
+    }
+
+    init();
+  </script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>
