@@ -112,8 +112,8 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123").strip()
 
 # Mongo / partner portal
-MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
-MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "hke").strip()
+MONGODB_URI = os.getenv("MONGO_URI", os.getenv("MONGODB_URI", "")).strip()
+MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", os.getenv("MONGO_DB_NAME", "hke_db")).strip()
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 rz_client = (
@@ -127,7 +127,12 @@ ADMIN_SESSIONS: Dict[str, Dict[str, Any]] = {}
 PARTNER_SESSIONS: Dict[str, Dict[str, Any]] = {}
 PASSWORD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-mongo_client = MongoClient(MONGODB_URI) if MONGODB_URI else None
+mongo_client = (
+    MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+    if MONGODB_URI
+    else None
+)
+mongo_ready = False
 
 # =========================================================
 # DB
@@ -221,6 +226,7 @@ def init_db():
 @app.on_event("startup")
 def startup_event():
     init_db()
+    initialize_mongo()
 
 
 # =========================================================
@@ -238,6 +244,399 @@ def get_partners_collection():
 
 def get_partner_rates_collection():
     return get_mongo_db()["partner_rates"]
+
+
+def get_collection(name: str):
+    return get_mongo_db()[name]
+
+
+def utc_now() -> datetime:
+    return datetime.utcnow()
+
+
+def utc_now_iso() -> str:
+    return utc_now().isoformat()
+
+
+def hash_otp_value(otp: str) -> str:
+    return hashlib.sha256(safe_str(otp).encode("utf-8")).hexdigest()
+
+
+def normalize_for_mongo(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): normalize_for_mongo(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [normalize_for_mongo(item) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_for_mongo(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def mongo_write_enabled() -> bool:
+    return bool(mongo_client and mongo_ready)
+
+
+def initialize_mongo():
+    global mongo_ready
+
+    if not mongo_client:
+        logger.warning("MongoDB is not configured")
+        mongo_ready = False
+        return
+
+    try:
+        mongo_client.admin.command("ping")
+        ensure_partner_indexes()
+        ensure_app_mongo_indexes()
+        mongo_ready = True
+        logger.info("MongoDB connected successfully")
+    except Exception:
+        mongo_ready = False
+        logger.exception("MongoDB connection failed")
+
+
+def ensure_app_mongo_indexes():
+    db = get_mongo_db()
+    db["customers"].create_index("phone", unique=True)
+    db["otp_sessions"].create_index("phone")
+    db["otp_sessions"].create_index("expiresAt")
+    db["ai_itineraries"].create_index("phone")
+    db["ai_itineraries"].create_index("customerPhone")
+    db["bookings"].create_index("phone")
+    db["payments"].create_index("bookingId")
+    db["payments"].create_index("phone")
+    db["whatsapp_logs"].create_index("phone")
+    db["reviews"].create_index("phone")
+    db["itinerary_edits"].create_index("phone")
+
+
+def safe_mongo_write(action: str, func):
+    if not mongo_write_enabled():
+        return None
+
+    try:
+        return func()
+    except Exception:
+        logger.exception("MongoDB write failed during %s", action)
+        return None
+
+
+def upsert_customer_mongo(
+    phone: str,
+    *,
+    name: str = "",
+    email: str = "",
+    last_destination: str = "",
+    extra: Optional[Dict[str, Any]] = None
+):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        return
+
+    now_ts = utc_now_iso()
+    set_doc = {
+        "phone": digits,
+        "updatedAt": now_ts,
+    }
+    if safe_str(name):
+        set_doc["name"] = safe_str(name)
+    if safe_str(email):
+        set_doc["email"] = safe_str(email)
+    if safe_str(last_destination):
+        set_doc["lastDestination"] = safe_str(last_destination)
+    if extra:
+        set_doc.update(normalize_for_mongo(extra))
+
+    safe_mongo_write(
+        "upsert_customer",
+        lambda: get_collection("customers").update_one(
+            {"phone": digits},
+            {
+                "$set": set_doc,
+                "$setOnInsert": {
+                    "createdAt": now_ts,
+                },
+            },
+            upsert=True
+        )
+    )
+
+
+def save_otp_session_mongo(phone: str, otp: str, purpose: str, expires_at: datetime):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        return
+
+    created_at = utc_now_iso()
+    safe_mongo_write(
+        "save_otp_session",
+        lambda: get_collection("otp_sessions").update_many(
+            {"phone": digits, "purpose": purpose, "verified": False},
+            {"$set": {"superseded": True, "updatedAt": created_at}}
+        )
+    )
+    safe_mongo_write(
+        "insert_otp_session",
+        lambda: get_collection("otp_sessions").insert_one({
+            "phone": digits,
+            "otp_hash": hash_otp_value(otp),
+            "purpose": purpose,
+            "verified": False,
+            "createdAt": created_at,
+            "updatedAt": created_at,
+            "expiresAt": expires_at.isoformat(),
+        })
+    )
+
+
+def mark_otp_verified_mongo(phone: str, purpose: str):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        return
+
+    verified_at = utc_now_iso()
+    session = safe_mongo_write(
+        "find_otp_session",
+        lambda: get_collection("otp_sessions").find_one(
+            {"phone": digits, "purpose": purpose},
+            sort=[("createdAt", -1)]
+        )
+    )
+    if not session:
+        return
+
+    safe_mongo_write(
+        "verify_otp_session",
+        lambda: get_collection("otp_sessions").update_one(
+            {"_id": session["_id"]},
+            {
+                "$set": {
+                    "verified": True,
+                    "verifiedAt": verified_at,
+                    "updatedAt": verified_at,
+                }
+            }
+        )
+    )
+
+
+def save_ai_itinerary_mongo(request_payload: Dict[str, Any], itinerary: Dict[str, Any], source: str):
+    phone = clean_phone(safe_str(request_payload.get("phone")))
+    now_ts = utc_now_iso()
+    doc = {
+        "name": safe_str(request_payload.get("name")),
+        "phone": phone,
+        "customerPhone": phone,
+        "email": safe_str(request_payload.get("email")),
+        "destination": safe_str(request_payload.get("destination")),
+        "startDate": safe_str(request_payload.get("startDate")),
+        "endDate": safe_str(request_payload.get("endDate")),
+        "days": safe_int(request_payload.get("days")),
+        "travellers": safe_int(request_payload.get("travellers")),
+        "rooms": safe_int(request_payload.get("rooms")),
+        "hotelClass": safe_str(request_payload.get("hotelClass")),
+        "vehicle": safe_str(request_payload.get("vehicle")),
+        "guide": safe_str(request_payload.get("guide")),
+        "places": normalize_for_mongo(request_payload.get("places") or []),
+        "interests": normalize_for_mongo(request_payload.get("travelStyle") or []),
+        "travelStyle": normalize_for_mongo(request_payload.get("travelStyle") or []),
+        "requestPayload": normalize_for_mongo(request_payload),
+        "generatedItinerary": normalize_for_mongo(itinerary),
+        "originalItinerary": normalize_for_mongo(itinerary),
+        "latestItinerary": normalize_for_mongo(itinerary),
+        "status": "draft",
+        "source": source,
+        "createdAt": now_ts,
+        "updatedAt": now_ts,
+    }
+    safe_mongo_write(
+        "save_ai_itinerary",
+        lambda: get_collection("ai_itineraries").insert_one(doc)
+    )
+    upsert_customer_mongo(
+        phone,
+        name=safe_str(request_payload.get("name")),
+        email=safe_str(request_payload.get("email")),
+        last_destination=safe_str(request_payload.get("destination"))
+    )
+
+
+def save_itinerary_edit_mongo(
+    customer_details: Dict[str, Any],
+    instruction: str,
+    current_itinerary: str,
+    updated_itinerary: Dict[str, Any],
+    source: str
+):
+    phone = clean_phone(safe_str(customer_details.get("phone")))
+    now_ts = utc_now_iso()
+    linked_itinerary = None
+
+    if mongo_write_enabled() and len(phone) == 10:
+        try:
+            linked_itinerary = get_collection("ai_itineraries").find_one(
+                {"$or": [{"phone": phone}, {"customerPhone": phone}]},
+                sort=[("updatedAt", -1)]
+            )
+        except Exception:
+            logger.exception("MongoDB lookup failed during save_itinerary_edit")
+
+    edit_doc = {
+        "phone": phone,
+        "customerPhone": phone,
+        "name": safe_str(customer_details.get("name")),
+        "email": safe_str(customer_details.get("email")),
+        "destination": safe_str(customer_details.get("destination")),
+        "instruction": safe_str(instruction),
+        "currentItinerary": safe_str(current_itinerary),
+        "updatedItinerary": normalize_for_mongo(updated_itinerary),
+        "customerDetails": normalize_for_mongo(customer_details),
+        "source": source,
+        "createdAt": now_ts,
+        "updatedAt": now_ts,
+    }
+    if linked_itinerary and linked_itinerary.get("_id"):
+        edit_doc["aiItineraryId"] = str(linked_itinerary["_id"])
+
+    safe_mongo_write(
+        "save_itinerary_edit",
+        lambda: get_collection("itinerary_edits").insert_one(edit_doc)
+    )
+
+    if linked_itinerary and linked_itinerary.get("_id"):
+        safe_mongo_write(
+            "update_ai_itinerary_latest",
+            lambda: get_collection("ai_itineraries").update_one(
+                {"_id": linked_itinerary["_id"]},
+                {
+                    "$set": {
+                        "latestItinerary": normalize_for_mongo(updated_itinerary),
+                        "updatedAt": now_ts,
+                    }
+                }
+            )
+        )
+
+    if len(phone) == 10:
+        upsert_customer_mongo(
+            phone,
+            name=safe_str(customer_details.get("name")),
+            email=safe_str(customer_details.get("email")),
+            last_destination=safe_str(customer_details.get("destination"))
+        )
+
+
+def build_booking_document(
+    *,
+    booking_id: str,
+    phone: str,
+    name: str = "",
+    email: str = "",
+    destination: str = "",
+    trip_name: str = "",
+    payment_type: str = "",
+    amount: float = 0.0,
+    currency: str = "INR",
+    status: str = "",
+    raw_payload: Optional[Dict[str, Any]] = None,
+    payment: Optional[Dict[str, Any]] = None,
+    itinerary: Optional[Dict[str, Any]] = None,
+    pricing: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    now_ts = utc_now_iso()
+    doc = {
+        "bookingId": safe_str(booking_id),
+        "amount": safe_float(amount),
+        "currency": safe_str(currency, "INR"),
+        "status": safe_str(status),
+        "updatedAt": now_ts,
+    }
+    clean = clean_phone(phone)
+    if len(clean) == 10:
+        doc["phone"] = clean
+    if safe_str(name):
+        doc["name"] = safe_str(name)
+    if safe_str(email):
+        doc["email"] = safe_str(email)
+    if safe_str(destination):
+        doc["destination"] = safe_str(destination)
+    if safe_str(trip_name):
+        doc["tripName"] = safe_str(trip_name)
+    if safe_str(payment_type):
+        doc["paymentType"] = safe_str(payment_type)
+    if raw_payload is not None:
+        doc["rawPayload"] = normalize_for_mongo(raw_payload)
+    if payment is not None:
+        doc["payment"] = normalize_for_mongo(payment)
+    if itinerary is not None:
+        doc["itinerary"] = normalize_for_mongo(itinerary)
+    if pricing is not None:
+        doc["pricing"] = normalize_for_mongo(pricing)
+    if extra:
+        doc.update(normalize_for_mongo(extra))
+    return doc
+
+
+def upsert_booking_mongo(booking_doc: Dict[str, Any]):
+    booking_id = safe_str(booking_doc.get("bookingId"))
+    if not booking_id:
+        return
+
+    now_ts = utc_now_iso()
+    safe_mongo_write(
+        "upsert_booking",
+        lambda: get_collection("bookings").update_one(
+            {"bookingId": booking_id},
+            {
+                "$set": booking_doc,
+                "$setOnInsert": {
+                    "createdAt": now_ts,
+                },
+            },
+            upsert=True
+        )
+    )
+
+
+def upsert_payment_mongo(payment_doc: Dict[str, Any]):
+    booking_id = safe_str(payment_doc.get("bookingId"))
+    if not booking_id:
+        return
+
+    now_ts = utc_now_iso()
+    safe_mongo_write(
+        "upsert_payment",
+        lambda: get_collection("payments").update_one(
+            {"bookingId": booking_id},
+            {
+                "$set": payment_doc,
+                "$setOnInsert": {
+                    "createdAt": now_ts,
+                },
+            },
+            upsert=True
+        )
+    )
+
+
+def log_whatsapp_event(phone: str, message_type: str, message: str, status: str):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        return
+
+    safe_mongo_write(
+        "log_whatsapp_event",
+        lambda: get_collection("whatsapp_logs").insert_one({
+            "phone": digits,
+            "messageType": safe_str(message_type),
+            "message": safe_str(message),
+            "status": safe_str(status),
+            "createdAt": utc_now_iso(),
+        })
+    )
 
 
 def ensure_partner_indexes():
@@ -526,37 +925,16 @@ def send_msg91_otp(mobile: str, otp: str):
     if not MSG91_AUTH_KEY:
         raise RuntimeError("MSG91_AUTH_KEY not configured")
 
-    # MSG91 OneAPI Flow slug created in MSG91 dashboard:
-    # Flow name: OTP_LOGIN_FLOW_HKE
-    # ID/Slug: otp-login-flow-hke
-    url = "https://control.msg91.com/api/v5/oneapi/api/flow/otp-login-flow-hke/run"
+    if not MSG91_SMS_FLOW_ID:
+        raise RuntimeError("MSG91_SMS_FLOW_ID not configured")
 
-    # IMPORTANT:
-    # MSG91 OneAPI uses the variable name shown in the flow code sample.
-    # Your OneAPI flow shows variable name: OTP
-    # Do NOT use ##OTP## here; MSG91 will keep the OTP blank.
+    variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
+    url = "https://control.msg91.com/api/v5/flow/"
     payload = {
-        "data": {
-            "sendTo": [
-                {
-                    "to": [
-                        {
-                            "mobiles": f"91{mobile}",
-                            "variables": {
-                                "OTP": {
-                                    "value": otp
-                                }
-                            }
-                        }
-                    ],
-                    "variables": {
-                        "OTP": {
-                            "value": otp
-                        }
-                    }
-                }
-            ]
-        }
+        "flow_id": MSG91_SMS_FLOW_ID,
+        "sender": MSG91_SENDER_ID,
+        "mobiles": f"91{mobile}",
+        variable_name: otp
     }
 
     headers = {
@@ -567,7 +945,7 @@ def send_msg91_otp(mobile: str, otp: str):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
     except requests.RequestException as exc:
-        logger.exception("MSG91 OneAPI OTP request transport failure for mobile=%s", mobile)
+        logger.exception("MSG91 OTP request transport failure for mobile=%s", mobile)
         raise RuntimeError(f"MSG91 request failed: {exc}") from exc
 
     try:
@@ -575,16 +953,9 @@ def send_msg91_otp(mobile: str, otp: str):
     except Exception:
         response_data = {"raw": response.text}
 
-    logger.info(
-        "MSG91 OneAPI OTP response for mobile=%s status=%s response=%s",
-        mobile,
-        response.status_code,
-        json.dumps(response_data, default=str)
-    )
-
     if response.status_code not in (200, 201, 202):
         logger.error(
-            "MSG91 OneAPI OTP send failed for mobile=%s status=%s response=%s",
+            "MSG91 OTP send failed for mobile=%s status=%s response=%s",
             mobile,
             response.status_code,
             response.text
@@ -592,15 +963,23 @@ def send_msg91_otp(mobile: str, otp: str):
         raise RuntimeError(f"MSG91 send failed: {response.text}")
 
     lower_dump = json.dumps(response_data).lower()
-    if "error" in lower_dump or "failed" in lower_dump or "company details not found" in lower_dump:
+
+    if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
         logger.error(
-            "MSG91 OneAPI OTP rejected for mobile=%s response=%s",
+            "MSG91 OTP rejected for mobile=%s response=%s",
             mobile,
             json.dumps(response_data, default=str)
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
 
+    logger.info(
+        "MSG91 OTP response for mobile=%s response=%s",
+        mobile,
+        json.dumps(response_data, default=str)
+    )
+
     return response_data
+
 
 def build_itinerary_prompt(data: dict, partner_context: Optional[Dict[str, Any]] = None) -> str:
     partner_lines = []
@@ -1634,6 +2013,7 @@ class CustomerProfileUpdateRequest(BaseModel):
     phone: str
     name: Optional[str] = ""
     email: Optional[EmailStr] = None
+    lastDestination: Optional[str] = ""
     consent_marketing: Optional[bool] = None
 
     @field_validator("phone")
@@ -1842,6 +2222,8 @@ def health():
         "ok": True,
         "openai_configured": bool(client),
         "razorpay_configured": bool(rz_client),
+        "mongo_configured": bool(MONGODB_URI),
+        "mongo_connected": mongo_write_enabled(),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
         "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
         "msg91_dlt_template_configured": bool(MSG91_DLT_TEMPLATE_ID),
@@ -1926,7 +2308,7 @@ def admin_logout(authorization: Optional[str] = Header(default=None)):
 def send_otp(payload: SendOTPRequest):
     mobile = payload.mobile or payload.phone or ""
     otp = generate_otp()
-    created_at = datetime.utcnow()
+    created_at = utc_now()
     expires_at = created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
     conn = get_db()
@@ -1953,6 +2335,8 @@ def send_otp(payload: SendOTPRequest):
         raise HTTPException(status_code=500, detail="Unable to create OTP session right now")
     finally:
         conn.close()
+
+    save_otp_session_mongo(mobile, otp, "login", expires_at)
 
     try:
         provider_response = send_msg91_otp(mobile, otp)
@@ -2032,7 +2416,7 @@ def verify_otp(payload: VerifyOTPRequest):
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    verified_at = datetime.utcnow().isoformat()
+    verified_at = utc_now_iso()
 
     try:
         cur.execute("""
@@ -2048,6 +2432,9 @@ def verify_otp(payload: VerifyOTPRequest):
         raise HTTPException(status_code=500, detail="Unable to update customer profile right now")
     finally:
         conn.close()
+
+    mark_otp_verified_mongo(mobile, "login")
+    upsert_customer_mongo(mobile, extra={"verified": True, "lastLoginAt": verified_at})
 
     return {
         "ok": True,
@@ -2084,7 +2471,7 @@ def get_customer_profile(phone: str = Query(...)):
 
 @app.post("/api/customer/profile")
 def update_customer_profile(payload: CustomerProfileUpdateRequest):
-    now_ts = datetime.utcnow().isoformat()
+    now_ts = utc_now_iso()
     email = safe_str(payload.email)
     consent_provided = "consent_marketing" in payload.model_fields_set
     consent_value = 1 if payload.consent_marketing else 0
@@ -2147,6 +2534,13 @@ def update_customer_profile(payload: CustomerProfileUpdateRequest):
         raise HTTPException(status_code=500, detail="Unable to save customer profile right now")
     finally:
         conn.close()
+
+    upsert_customer_mongo(
+        payload.phone,
+        name=safe_str(payload.name),
+        email=email,
+        last_destination=safe_str(payload.lastDestination)
+    )
 
     return {
         "ok": True,
@@ -2331,6 +2725,14 @@ def generate_itinerary(payload: PlannerRequest):
     except Exception as email_error:
         print(f"Failed to send enquiry email: {email_error}")
 
+    save_ai_itinerary_mongo(data, itinerary, source)
+    log_whatsapp_event(
+        data.get("phone", ""),
+        "ai_itinerary",
+        f"AI itinerary prepared for {safe_str(data.get('destination'))}",
+        "generated"
+    )
+
     return {
         "ok": True,
         "source": source,
@@ -2353,13 +2755,16 @@ def edit_itinerary(payload: ChatEditRequest):
         itinerary = call_openai_json(
             build_edit_prompt(current_itinerary, instruction, customer_details)
         )
+        save_itinerary_edit_mongo(customer_details, instruction, current_itinerary, itinerary, "openai")
         return {"ok": True, "source": "openai", "itinerary": itinerary}
     except Exception as e:
+        fallback = fallback_itinerary(customer_details, edit_note=instruction)
+        save_itinerary_edit_mongo(customer_details, instruction, current_itinerary, fallback, "fallback")
         return {
             "ok": True,
             "source": "fallback",
             "warning": str(e),
-            "itinerary": fallback_itinerary(customer_details, edit_note=instruction)
+            "itinerary": fallback
         }
 
 
@@ -2581,6 +2986,37 @@ def create_payment_order(payload: RazorpayOrderRequest):
             detail="Unable to create Razorpay order right now"
         )
 
+    booking_doc = build_booking_document(
+        booking_id=safe_str(order.get("id")) or receipt,
+        phone=payload.phone,
+        name=payload.name,
+        email=payload.email,
+        trip_name=payload.trip_name,
+        payment_type=payload.payment_type,
+        amount=amount_rupees,
+        currency=payload.currency,
+        status="payment_order_created",
+        raw_payload=payload.model_dump(),
+        extra={
+            "receipt": receipt[:40],
+            "razorpayOrderId": safe_str(order.get("id")),
+            "notes": notes,
+        }
+    )
+    upsert_booking_mongo(booking_doc)
+    upsert_payment_mongo({
+        **booking_doc,
+        "status": "order_created",
+        "bookingId": safe_str(order.get("id")) or receipt,
+    })
+    upsert_customer_mongo(payload.phone, name=payload.name, email=payload.email)
+    log_whatsapp_event(
+        payload.phone,
+        "payment_order",
+        f"Payment order created for {safe_str(payload.trip_name)}",
+        "generated"
+    )
+
     return {
         "ok": True,
         "key": RAZORPAY_KEY_ID,
@@ -2608,6 +3044,28 @@ def verify_payment(payload: RazorpayVerifyRequest):
 
     if not is_valid:
         raise HTTPException(status_code=400, detail="Invalid Razorpay signature")
+
+    booking_id = safe_str(payload.razorpay_order_id) or safe_str(payload.razorpay_payment_id)
+    booking_doc = build_booking_document(
+        booking_id=booking_id,
+        phone="",
+        status="payment_verified",
+        payment={
+            "razorpayOrderId": payload.razorpay_order_id,
+            "razorpayPaymentId": payload.razorpay_payment_id,
+            "razorpaySignature": payload.razorpay_signature,
+            "verified": True,
+        },
+        extra={
+            "razorpayOrderId": payload.razorpay_order_id,
+            "razorpayPaymentId": payload.razorpay_payment_id,
+        }
+    )
+    upsert_booking_mongo(booking_doc)
+    upsert_payment_mongo({
+        **booking_doc,
+        "status": "verified",
+    })
 
     return {
         "ok": True,
@@ -2670,11 +3128,11 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             safe_str(payment.get("nextScheduleText")),
             safe_str(payment.get("razorpayOrderId")),
             safe_str(payment.get("razorpayPaymentId")),
-            safe_str(payment.get("paidAt", datetime.utcnow().isoformat())),
+            safe_str(payment.get("paidAt", utc_now_iso())),
             json.dumps(customer, ensure_ascii=False),
             json.dumps(itinerary, ensure_ascii=False),
             json.dumps(pricing, ensure_ascii=False),
-            datetime.utcnow().isoformat()
+            utc_now_iso()
         ))
         conn.commit()
     except Exception as e:
@@ -2685,6 +3143,61 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         )
     finally:
         conn.close()
+
+    booking_id = (
+        safe_str(payment.get("razorpayOrderId"))
+        or safe_str(payment.get("razorpayPaymentId"))
+        or safe_str(itinerary.get("title"))
+    )
+    booking_doc = build_booking_document(
+        booking_id=booking_id,
+        phone=safe_str(customer.get("phone")),
+        name=safe_str(customer.get("name")),
+        email=safe_str(customer.get("email")),
+        destination=safe_str(customer.get("destination")),
+        trip_name=safe_str(itinerary.get("title")),
+        payment_type=safe_str(payment.get("paymentType", payment.get("paymentLabel"))),
+        amount=paid_amount,
+        currency="INR",
+        status="payment_confirmation_saved",
+        payment=payment,
+        itinerary=itinerary,
+        pricing=pricing,
+        raw_payload=payload.model_dump(),
+        extra={
+            "startDate": safe_str(customer.get("startDate")),
+            "endDate": safe_str(customer.get("endDate")),
+            "travellers": safe_int(customer.get("travellers")),
+            "rooms": safe_int(customer.get("rooms")),
+            "fromLocation": safe_str(customer.get("fromLocation", customer.get("startPoint"))),
+            "endPoint": safe_str(customer.get("endPoint")),
+            "razorpayOrderId": safe_str(payment.get("razorpayOrderId")),
+            "razorpayPaymentId": safe_str(payment.get("razorpayPaymentId")),
+            "totalAmount": total_amount,
+            "remainingAmount": remaining_amount,
+        }
+    )
+    upsert_booking_mongo(booking_doc)
+    upsert_payment_mongo({
+        **booking_doc,
+        "status": "confirmed",
+        "paidAmount": paid_amount,
+        "totalAmount": total_amount,
+        "remainingAmount": remaining_amount,
+        "phone": clean_phone(safe_str(customer.get("phone"))),
+    })
+    upsert_customer_mongo(
+        safe_str(customer.get("phone")),
+        name=safe_str(customer.get("name")),
+        email=safe_str(customer.get("email")),
+        last_destination=safe_str(customer.get("destination"))
+    )
+    log_whatsapp_event(
+        safe_str(customer.get("phone")),
+        "payment_confirmation",
+        f"Payment confirmation saved for {safe_str(itinerary.get('title') or customer.get('destination'))}",
+        "generated"
+    )
 
     return {"ok": True, "message": "Payment confirmation saved successfully"}
 
