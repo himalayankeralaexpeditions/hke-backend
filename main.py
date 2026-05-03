@@ -539,13 +539,13 @@ def send_msg91_otp(mobile: str, otp: str):
 
     url = "https://control.msg91.com/api/v5/flow/"
 
-   payload = {
-    "flow_id": MSG91_SMS_FLOW_ID,
-    "sender": MSG91_SENDER_ID,
-    "mobiles": f"91{mobile}",
-    "template_id": MSG91_DLT_TEMPLATE_ID,   # ✅ ADD THIS
-    variable_name: otp
-}
+    payload = {
+        "flow_id": MSG91_SMS_FLOW_ID,
+        "sender": MSG91_SENDER_ID,
+        "mobiles": f"91{mobile}",
+        "template_id": MSG91_DLT_TEMPLATE_ID,
+        variable_name: otp
+    }
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
