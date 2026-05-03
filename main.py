@@ -529,19 +529,23 @@ def send_msg91_otp(mobile: str, otp: str):
     if not MSG91_SMS_FLOW_ID:
         raise RuntimeError("MSG91_SMS_FLOW_ID not configured")
 
+    if not MSG91_DLT_TEMPLATE_ID:
+        raise RuntimeError("MSG91_DLT_TEMPLATE_ID not configured")
+
+    if MSG91_DLT_TEMPLATE_VERSION != "v1.1":
+        raise RuntimeError("MSG91_DLT_TEMPLATE_VERSION must be set to v1.1 for OTP_LOGIN_HKE_NUMERIC")
 
     variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
 
     url = "https://control.msg91.com/api/v5/flow/"
 
-   variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
-
-payload = {
-    "flow_id": MSG91_SMS_FLOW_ID,
-    "sender": MSG91_SENDER_ID,
-    "mobiles": f"91{mobile}",
-    variable_name: otp
-}
+    payload = {
+        "flow_id": MSG91_SMS_FLOW_ID,
+        "sender": MSG91_SENDER_ID,
+        "mobiles": f"91{mobile}",
+        "template_id": MSG91_DLT_TEMPLATE_ID,
+        variable_name: otp
+    }
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
