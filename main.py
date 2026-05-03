@@ -543,7 +543,6 @@ def send_msg91_otp(mobile: str, otp: str):
         "flow_id": MSG91_SMS_FLOW_ID,
         "sender": MSG91_SENDER_ID,
         "mobiles": f"91{mobile}",
-        "template_id": MSG91_DLT_TEMPLATE_ID,
         variable_name: otp
     }
 
