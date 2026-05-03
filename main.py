@@ -532,31 +532,32 @@ def send_msg91_otp(mobile: str, otp: str):
     url = "https://control.msg91.com/api/v5/oneapi/api/flow/otp-login-flow-hke/run"
 
     # IMPORTANT:
-    # MSG91 OneAPI variable must match the template placeholder shown in MSG91.
-    # Your approved template preview shows ##OTP##, so the payload key must be ##OTP##.
-   payload = {
-    "data": {
-        "sendTo": [
-            {
-                "to": [
-                    {
-                        "mobiles": f"91{mobile}",
-                        "variables": {
-                            "OTP": {
-                                "value": otp
+    # MSG91 OneAPI uses the variable name shown in the flow code sample.
+    # Your OneAPI flow shows variable name: OTP
+    # Do NOT use ##OTP## here; MSG91 will keep the OTP blank.
+    payload = {
+        "data": {
+            "sendTo": [
+                {
+                    "to": [
+                        {
+                            "mobiles": f"91{mobile}",
+                            "variables": {
+                                "OTP": {
+                                    "value": otp
+                                }
                             }
                         }
-                    }
-                ],
-                "variables": {
-                    "OTP": {
-                        "value": otp
+                    ],
+                    "variables": {
+                        "OTP": {
+                            "value": otp
+                        }
                     }
                 }
-            }
-        ]
+            ]
+        }
     }
-}
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
@@ -574,6 +575,13 @@ def send_msg91_otp(mobile: str, otp: str):
     except Exception:
         response_data = {"raw": response.text}
 
+    logger.info(
+        "MSG91 OneAPI OTP response for mobile=%s status=%s response=%s",
+        mobile,
+        response.status_code,
+        json.dumps(response_data, default=str)
+    )
+
     if response.status_code not in (200, 201, 202):
         logger.error(
             "MSG91 OneAPI OTP send failed for mobile=%s status=%s response=%s",
@@ -584,7 +592,6 @@ def send_msg91_otp(mobile: str, otp: str):
         raise RuntimeError(f"MSG91 send failed: {response.text}")
 
     lower_dump = json.dumps(response_data).lower()
-
     if "error" in lower_dump or "failed" in lower_dump or "company details not found" in lower_dump:
         logger.error(
             "MSG91 OneAPI OTP rejected for mobile=%s response=%s",
@@ -593,14 +600,7 @@ def send_msg91_otp(mobile: str, otp: str):
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
 
-    logger.info(
-        "MSG91 OneAPI OTP response for mobile=%s response=%s",
-        mobile,
-        json.dumps(response_data, default=str)
-    )
-
     return response_data
-
 
 def build_itinerary_prompt(data: dict, partner_context: Optional[Dict[str, Any]] = None) -> str:
     partner_lines = []
