@@ -972,6 +972,11 @@ def send_msg91_otp(mobile: str, otp: str):
         response.status_code
     )
 
+    has_error = response_data.get("hasError") if isinstance(response_data, dict) else None
+    provider_status = safe_str(response_data.get("status")).lower() if isinstance(response_data, dict) else ""
+    provider_errors = response_data.get("errors") if isinstance(response_data, dict) else None
+    errors_list = provider_errors if isinstance(provider_errors, list) else []
+
     if response.status_code not in (200, 201, 202):
         logger.error(
             "MSG91 OneAPI OTP send failed for mobile=%s status=%s response=%s",
@@ -981,15 +986,16 @@ def send_msg91_otp(mobile: str, otp: str):
         )
         raise RuntimeError(f"MSG91 send failed: {response.text}")
 
-    lower_dump = json.dumps(response_data).lower()
-
-    if "error" in lower_dump or "failed" in lower_dump or "company details not found" in lower_dump:
+    if has_error is True or provider_status in ("error", "failed") or errors_list:
         logger.error(
             "MSG91 OneAPI OTP rejected for mobile=%s response=%s",
             mobile,
             json.dumps(response_data, default=str)
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
+
+    if has_error is False or provider_status == "success":
+        return response_data
 
     return response_data
 
