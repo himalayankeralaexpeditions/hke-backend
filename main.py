@@ -89,6 +89,7 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 
 DB_PATH = os.getenv("DB_PATH", "hke_bookings.db").strip()
+ADMIN_CONTENT_STORE_PATH = os.getenv("ADMIN_CONTENT_STORE_PATH", "admin_content_store.json").strip()
 
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -221,6 +222,60 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def default_admin_content_store() -> Dict[str, Any]:
+    return {
+        "homepage_packages": {},
+        "images": {},
+        "ai_destinations": [],
+        "tour_packages": {},
+        "pilgrimage_packages": [],
+    }
+
+
+def read_admin_content_store() -> Dict[str, Any]:
+    fallback = default_admin_content_store()
+
+    try:
+        if not os.path.exists(ADMIN_CONTENT_STORE_PATH):
+            return fallback
+
+        with open(ADMIN_CONTENT_STORE_PATH, "r", encoding="utf-8") as fh:
+            raw = json.load(fh) or {}
+    except Exception:
+        logger.exception("Unable to read admin content store")
+        return fallback
+
+    data = fallback.copy()
+    for key in data.keys():
+        value = raw.get(key)
+        if isinstance(data[key], dict):
+            data[key] = value if isinstance(value, dict) else {}
+        elif isinstance(data[key], list):
+            data[key] = value if isinstance(value, list) else []
+
+    return data
+
+
+def write_admin_content_store(data: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = default_admin_content_store()
+
+    for key in normalized.keys():
+        value = (data or {}).get(key)
+        if isinstance(normalized[key], dict):
+            normalized[key] = value if isinstance(value, dict) else {}
+        elif isinstance(normalized[key], list):
+            normalized[key] = value if isinstance(value, list) else []
+
+    try:
+        with open(ADMIN_CONTENT_STORE_PATH, "w", encoding="utf-8") as fh:
+            json.dump(normalized, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.exception("Unable to write admin content store")
+        raise HTTPException(status_code=500, detail="Unable to save admin content right now")
+
+    return normalized
 
 
 @app.on_event("startup")
@@ -1653,6 +1708,10 @@ def get_admin_collection_snapshot(
     rows = list(collection.find({}).sort(sort_fields or [("updatedAt", -1), ("createdAt", -1)]).limit(limit))
     items = [sanitize_admin_mongo_doc(row, blocked_fields) for row in rows]
     return {"total": total, "items": items}
+
+
+def get_public_admin_content() -> Dict[str, Any]:
+    return read_admin_content_store()
 
 
 def money_to_paise(value: Any) -> int:
@@ -3443,6 +3502,69 @@ def admin_crm(authorization: Optional[str] = Header(default=None)):
         "payments": payments["items"],
         "whatsapp_logs": whatsapp_logs["items"],
     }
+
+
+@app.get("/api/admin/content")
+def admin_content(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+    content = read_admin_content_store()
+    return {"ok": True, **content}
+
+
+@app.post("/api/admin/content/{section}")
+def admin_content_update(
+    section: str,
+    payload: Dict[str, Any],
+    authorization: Optional[str] = Header(default=None)
+):
+    require_admin_token(authorization)
+
+    allowed_sections = {
+        "homepage_packages": dict,
+        "images": dict,
+        "ai_destinations": list,
+        "tour_packages": dict,
+        "pilgrimage_packages": list,
+    }
+
+    if section not in allowed_sections:
+        raise HTTPException(status_code=404, detail="Admin content section not found")
+
+    data = payload.get("data")
+    expected_type = allowed_sections[section]
+    if not isinstance(data, expected_type):
+        raise HTTPException(status_code=400, detail="Invalid admin content payload")
+
+    current = read_admin_content_store()
+    current[section] = data
+    saved = write_admin_content_store(current)
+
+    return {"ok": True, "section": section, "data": saved.get(section)}
+
+
+@app.get("/api/public/homepage-packages")
+def public_homepage_packages():
+    return {"ok": True, "items": get_public_admin_content().get("homepage_packages", {})}
+
+
+@app.get("/api/public/images")
+def public_images():
+    return {"ok": True, "items": get_public_admin_content().get("images", {})}
+
+
+@app.get("/api/public/ai-destinations")
+def public_ai_destinations():
+    return {"ok": True, "items": get_public_admin_content().get("ai_destinations", [])}
+
+
+@app.get("/api/public/tour-packages")
+def public_tour_packages():
+    return {"ok": True, "items": get_public_admin_content().get("tour_packages", {})}
+
+
+@app.get("/api/public/pilgrimage-packages")
+def public_pilgrimage_packages():
+    return {"ok": True, "items": get_public_admin_content().get("pilgrimage_packages", [])}
 
 
 if __name__ == "__main__":
