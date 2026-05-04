@@ -12,6 +12,7 @@ import requests
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
+from urllib.parse import quote_plus
 
 from bson import ObjectId
 from dotenv import load_dotenv
@@ -362,6 +363,17 @@ def ensure_app_mongo_indexes():
     db["bookings"].create_index("phone")
     db["payments"].create_index("bookingId")
     db["payments"].create_index("phone")
+    payment_indexes = db["payments"].index_information()
+    for field_name in ("razorpayPaymentId", "razorpay_payment_id"):
+        index_name = f"{field_name}_1"
+        existing = payment_indexes.get(index_name)
+        if existing and (not existing.get("sparse") or not existing.get("unique")):
+            try:
+                db["payments"].drop_index(index_name)
+            except Exception:
+                logger.exception("Unable to recreate sparse payment index for %s", field_name)
+        db["payments"].create_index(field_name, unique=True, sparse=True)
+    db["payments"].create_index("internalPaymentId", unique=True, sparse=True)
     db["whatsapp_logs"].create_index("phone")
     db["reviews"].create_index("phone")
     db["itinerary_edits"].create_index("phone")
@@ -670,6 +682,12 @@ def serialize_customer_booking_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         "fullPaymentDeadline": safe_str(doc.get("fullPaymentDeadline")),
         "razorpayOrderId": safe_str(doc.get("razorpayOrderId")),
         "razorpayPaymentId": safe_str(doc.get("razorpayPaymentId")),
+        "itineraryStatus": safe_str(doc.get("itineraryStatus")),
+        "itineraryGeneratedAt": safe_str(doc.get("itineraryGeneratedAt")),
+        "latestItinerary": normalize_for_mongo(doc.get("latestItinerary") or doc.get("itinerary") or {}),
+        "routeMap": normalize_for_mongo(doc.get("routeMap") or {}),
+        "hotelInfo": normalize_for_mongo(doc.get("hotelInfo") or {}),
+        "cabInfo": normalize_for_mongo(doc.get("cabInfo") or {}),
     }
 
 
@@ -698,6 +716,20 @@ def upsert_payment_mongo(payment_doc: Dict[str, Any]):
     booking_id = safe_str(payment_doc.get("bookingId"))
     if not booking_id:
         return
+
+    payment_doc = dict(payment_doc or {})
+    razorpay_payment_id = safe_str(
+        payment_doc.get("razorpayPaymentId") or payment_doc.get("razorpay_payment_id")
+    )
+    payment_doc.pop("razorpay_payment_id", None)
+    if razorpay_payment_id:
+        payment_doc["razorpayPaymentId"] = razorpay_payment_id
+    else:
+        payment_doc.pop("razorpayPaymentId", None)
+        payment_doc["internalPaymentId"] = safe_str(
+            payment_doc.get("internalPaymentId"),
+            f"HKE-PAY-{int(datetime.utcnow().timestamp())}"
+        )
 
     now_ts = utc_now_iso()
     safe_mongo_write(
@@ -730,6 +762,68 @@ def log_whatsapp_event(phone: str, message_type: str, message: str, status: str)
             "createdAt": utc_now_iso(),
         })
     )
+
+
+def generate_and_store_booking_itinerary(booking_doc: Dict[str, Any]) -> Dict[str, Any]:
+    booking_id = safe_str(booking_doc.get("bookingId"))
+    booking_ref = build_booking_ref(safe_str(booking_doc.get("bookingRef")) or booking_id)
+    base_payload = {
+        "name": safe_str(booking_doc.get("name")),
+        "email": safe_str(booking_doc.get("email")),
+        "phone": safe_str(booking_doc.get("phone")),
+        "destination": safe_str(booking_doc.get("destination")),
+        "packageName": safe_str(booking_doc.get("tripName")),
+        "fromLocation": safe_str(booking_doc.get("fromLocation")),
+        "endPoint": safe_str(booking_doc.get("endPoint")),
+        "startDate": safe_str(booking_doc.get("startDate")),
+        "endDate": safe_str(booking_doc.get("endDate")),
+        "travellers": safe_int(booking_doc.get("travellers"), 2),
+        "rooms": safe_int(booking_doc.get("rooms"), 1),
+        "days": safe_int(booking_doc.get("days")),
+        "budget": safe_str(booking_doc.get("budget")),
+        "travelType": safe_str(booking_doc.get("travelType")),
+        "hotelClass": safe_str(booking_doc.get("hotelClass")),
+        "vehicle": safe_str(booking_doc.get("vehicle")),
+        "guide": safe_str(booking_doc.get("guide")),
+        "foodPreference": safe_str(booking_doc.get("foodPreference")),
+        "needFood": bool(booking_doc.get("needFood", False)),
+        "travelStyle": normalize_for_mongo(booking_doc.get("travelStyle") or []),
+        "places": normalize_for_mongo(booking_doc.get("places") or []),
+        "notes": safe_str(booking_doc.get("notes")),
+    }
+
+    result = {
+        "bookingRef": booking_ref,
+        "itineraryStatus": "failed",
+        "itineraryGeneratedAt": utc_now_iso(),
+        "latestItinerary": {},
+        "routeMap": build_route_map(base_payload),
+        "hotelInfo": build_hotel_info(base_payload),
+        "cabInfo": build_cab_info(base_payload),
+    }
+
+    try:
+        assets = generate_booking_itinerary_assets(base_payload)
+        result.update({
+            "itineraryStatus": "generated",
+            "itineraryGeneratedAt": utc_now_iso(),
+            "latestItinerary": assets.get("itinerary") or {},
+            "routeMap": assets.get("routeMap") or result["routeMap"],
+            "hotelInfo": assets.get("hotelInfo") or result["hotelInfo"],
+            "cabInfo": assets.get("cabInfo") or result["cabInfo"],
+            "itinerarySource": safe_str(assets.get("source")),
+        })
+    except Exception:
+        logger.exception("Booking itinerary generation failed for %s", booking_ref)
+
+    safe_mongo_write(
+        "update_booking_itinerary_assets",
+        lambda: get_collection("bookings").update_one(
+            {"bookingId": booking_id},
+            {"$set": normalize_for_mongo(result)}
+        )
+    )
+    return result
 
 
 def ensure_partner_indexes():
@@ -1946,6 +2040,143 @@ def apply_partner_context_to_itinerary(itinerary: Dict[str, Any], partner_contex
 
     return itinerary
 
+
+def build_google_maps_search_url(query: str) -> str:
+    clean_query = safe_str(query)
+    if not clean_query:
+        return ""
+    return f"https://www.google.com/maps/search/?api=1&query={quote_plus(clean_query)}"
+
+
+def build_google_maps_directions_url(origin: str, destination: str) -> str:
+    clean_origin = safe_str(origin)
+    clean_destination = safe_str(destination)
+    if not clean_origin and not clean_destination:
+        return ""
+
+    base = "https://www.google.com/maps/dir/?api=1&travelmode=driving"
+    if clean_origin:
+        base += f"&origin={quote_plus(clean_origin)}"
+    if clean_destination:
+        base += f"&destination={quote_plus(clean_destination)}"
+    return base
+
+
+def build_route_map(data: Dict[str, Any]) -> Dict[str, Any]:
+    start_point = safe_str(data.get("fromLocation", data.get("startPoint")))
+    destination = safe_str(data.get("destination"))
+    end_point = safe_str(data.get("endPoint", destination))
+    places = [safe_str(item) for item in (data.get("places") or []) if safe_str(item)]
+
+    search_query_parts = [part for part in [destination] + places if part]
+    search_query = ", ".join(search_query_parts) or end_point or start_point
+    directions_origin = start_point or destination
+    directions_destination = end_point or destination or start_point
+
+    return {
+        "startPoint": start_point,
+        "destination": destination,
+        "endPoint": end_point,
+        "places": places,
+        "googleMapsSearchUrl": build_google_maps_search_url(search_query),
+        "googleMapsDirectionsUrl": build_google_maps_directions_url(directions_origin, directions_destination),
+    }
+
+
+def build_hotel_info(data: Dict[str, Any]) -> Dict[str, Any]:
+    destination = safe_str(data.get("destination"))
+    location = safe_str(data.get("hotelLocation")) or destination
+    start_date = safe_str(data.get("startDate"))
+    end_date = safe_str(data.get("endDate"))
+    return {
+        "name": "To be assigned by HKE",
+        "location": location,
+        "googleMapsUrl": build_google_maps_search_url(location),
+        "checkInDate": start_date,
+        "checkOutDate": end_date,
+        "status": "pending_assignment",
+    }
+
+
+def build_cab_info(data: Dict[str, Any]) -> Dict[str, Any]:
+    pickup_location = safe_str(data.get("fromLocation", data.get("startPoint")))
+    return {
+        "driverName": "To be assigned by HKE",
+        "vehicle": safe_str(data.get("vehicle"), "Vehicle to be assigned by HKE"),
+        "pickupLocation": pickup_location,
+        "pickupDate": safe_str(data.get("startDate")),
+        "status": "pending_assignment",
+    }
+
+
+def build_booking_itinerary_request(data: Dict[str, Any]) -> Dict[str, Any]:
+    start_date = safe_str(data.get("startDate"))
+    end_date = safe_str(data.get("endDate"))
+    days_value = safe_int(data.get("days"))
+    if days_value <= 0 and start_date and end_date:
+        try:
+            days_value = max(1, (parse_iso_date(end_date) - parse_iso_date(start_date)).days + 1)
+        except Exception:
+            days_value = 5
+    if days_value <= 0:
+        days_value = 5
+
+    destination = safe_str(data.get("destination")) or safe_str(data.get("packageName")) or "HKE Trip"
+    places = [safe_str(item) for item in (data.get("places") or []) if safe_str(item)]
+    if not places and destination:
+        places = [destination]
+
+    payload = {
+        "name": safe_str(data.get("name"), "HKE Customer"),
+        "email": safe_str(data.get("email"), "guest@hke.local"),
+        "phone": clean_phone(safe_str(data.get("phone"))),
+        "fromLocation": safe_str(data.get("fromLocation", data.get("startPoint"))) or destination,
+        "destination": destination,
+        "endPoint": safe_str(data.get("endPoint")) or destination,
+        "startDate": start_date or utc_now().strftime("%Y-%m-%d"),
+        "days": days_value,
+        "endDate": end_date or start_date or utc_now().strftime("%Y-%m-%d"),
+        "travellers": max(1, safe_int(data.get("travellers"), 2)),
+        "rooms": max(1, safe_int(data.get("rooms"), 1)),
+        "budget": safe_str(data.get("budget"), "Standard"),
+        "travelType": safe_str(data.get("travelType"), "Family"),
+        "hotelClass": safe_str(data.get("hotelClass"), "Standard"),
+        "vehicle": safe_str(data.get("vehicle"), "SUV"),
+        "guide": safe_str(data.get("guide"), "Without Guide"),
+        "needFood": bool(data.get("needFood", False)),
+        "foodPreference": safe_str(data.get("foodPreference"), "Flexible"),
+        "travelStyle": normalize_for_mongo(data.get("travelStyle") or []),
+        "places": places,
+        "notes": safe_str(data.get("notes")),
+    }
+    return payload
+
+
+def generate_booking_itinerary_assets(data: Dict[str, Any]) -> Dict[str, Any]:
+    itinerary_payload = build_booking_itinerary_request(data)
+    partner_context = get_partner_context_for_itinerary(itinerary_payload)
+
+    try:
+        logger.info("Using OpenAI itinerary system")
+        itinerary = call_openai_json(build_itinerary_prompt(itinerary_payload, partner_context=partner_context))
+        source = "openai"
+    except Exception:
+        itinerary = fallback_itinerary(itinerary_payload)
+        source = "fallback"
+
+    itinerary = apply_partner_context_to_itinerary(itinerary, partner_context)
+    route_map = build_route_map(itinerary_payload)
+    hotel_info = build_hotel_info(itinerary_payload)
+    cab_info = build_cab_info(itinerary_payload)
+
+    return {
+        "source": source,
+        "itinerary": itinerary,
+        "routeMap": route_map,
+        "hotelInfo": hotel_info,
+        "cabInfo": cab_info,
+    }
+
 # =========================================================
 # MODELS
 # =========================================================
@@ -2125,6 +2356,20 @@ class SavePaymentRequest(BaseModel):
     itinerary: Dict[str, Any]
     pricing: Dict[str, Any]
     payment: Dict[str, Any]
+
+
+class BookingItineraryGenerateRequest(BaseModel):
+    phone: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        if v in (None, ""):
+            return None
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
 
 
 class SendOTPRequest(BaseModel):
@@ -2863,6 +3108,7 @@ def delete_partner_rate(rate_id: str, authorization: Optional[str] = Header(defa
 def generate_itinerary(payload: PlannerRequest):
     data = payload.model_dump()
     partner_context = get_partner_context_for_itinerary(data)
+    route_map = build_route_map(data)
 
     try:
         itinerary = call_openai_json(build_itinerary_prompt(data, partner_context=partner_context))
@@ -2890,7 +3136,10 @@ def generate_itinerary(payload: PlannerRequest):
     return {
         "ok": True,
         "source": source,
-        "itinerary": itinerary
+        "itinerary": itinerary,
+        "routeMap": route_map,
+        "hotelInfo": build_hotel_info(data),
+        "cabInfo": build_cab_info(data),
     }
 
 
@@ -3269,6 +3518,9 @@ def save_payment_confirmation(payload: SavePaymentRequest):
     itinerary = payload.itinerary or {}
     pricing = payload.pricing or {}
     payment = payload.payment or {}
+    route_map = build_route_map(customer)
+    hotel_info = build_hotel_info(customer)
+    cab_info = build_cab_info(customer)
 
     total_amount = safe_float(
         pricing.get("finalFare", pricing.get("total", pricing.get("grand_total", 0)))
@@ -3365,6 +3617,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             "endDate": safe_str(customer.get("endDate")),
             "travellers": safe_int(customer.get("travellers")),
             "rooms": safe_int(customer.get("rooms")),
+            "days": safe_int(customer.get("days")),
             "fromLocation": safe_str(customer.get("fromLocation", customer.get("startPoint"))),
             "endPoint": safe_str(customer.get("endPoint")),
             "razorpayOrderId": safe_str(payment.get("razorpayOrderId")),
@@ -3375,6 +3628,22 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             "paymentStatus": payment_status,
             "bookingStatus": booking_status,
             "fullPaymentDeadline": safe_str(payment.get("fullPaymentDeadline", payment.get("dueDate"))),
+            "budget": safe_str(customer.get("budget")),
+            "travelType": safe_str(customer.get("travelType")),
+            "hotelClass": safe_str(customer.get("hotelClass")),
+            "vehicle": safe_str(customer.get("vehicle")),
+            "guide": safe_str(customer.get("guide")),
+            "foodPreference": safe_str(customer.get("foodPreference")),
+            "needFood": bool(customer.get("needFood", False)),
+            "travelStyle": normalize_for_mongo(customer.get("travelStyle") or []),
+            "places": normalize_for_mongo(customer.get("places") or []),
+            "notes": safe_str(customer.get("notes")),
+            "routeMap": route_map,
+            "hotelInfo": hotel_info,
+            "cabInfo": cab_info,
+            "latestItinerary": normalize_for_mongo(itinerary),
+            "itineraryStatus": "generated" if itinerary else "pending",
+            "itineraryGeneratedAt": utc_now_iso() if itinerary else "",
         }
     )
     upsert_booking_mongo(booking_doc)
@@ -3402,6 +3671,15 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         f"Payment confirmation saved for {safe_str(itinerary.get('title') or customer.get('destination'))}",
         "generated"
     )
+
+    if mongo_write_enabled():
+        try:
+            has_structured_itinerary = isinstance(itinerary, dict) and bool(itinerary.get("days"))
+            if not has_structured_itinerary:
+                generated_assets = generate_and_store_booking_itinerary(booking_doc)
+                booking_doc.update(generated_assets)
+        except Exception:
+            logger.exception("Post-payment itinerary generation failed for %s", booking_ref)
 
     return {"ok": True, "message": "Payment confirmation saved successfully", "bookingRef": booking_ref}
 
@@ -3505,6 +3783,41 @@ def list_orders(
         })
 
     return {"ok": True, "orders": orders}
+
+
+@app.post("/api/bookings/{booking_ref}/generate-itinerary")
+def generate_booking_itinerary(
+    booking_ref: str,
+    payload: BookingItineraryGenerateRequest
+):
+    if not mongo_write_enabled():
+        raise HTTPException(status_code=500, detail="MongoDB is not configured")
+
+    booking = get_collection("bookings").find_one({
+        "$or": [
+            {"bookingRef": booking_ref},
+            {"bookingId": booking_ref},
+            {"razorpayOrderId": booking_ref},
+        ]
+    })
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking_phone = clean_phone(safe_str(booking.get("phone")))
+    requested_phone = clean_phone(safe_str(payload.phone or booking_phone))
+    if len(requested_phone) != 10 or requested_phone != booking_phone or not is_phone_verified(requested_phone):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    assets = generate_and_store_booking_itinerary(booking)
+    return {
+        "ok": True,
+        "bookingRef": build_booking_ref(safe_str(booking.get("bookingRef")) or safe_str(booking.get("bookingId"))),
+        "itineraryStatus": safe_str(assets.get("itineraryStatus")),
+        "latestItinerary": normalize_for_mongo(assets.get("latestItinerary") or {}),
+        "routeMap": normalize_for_mongo(assets.get("routeMap") or {}),
+        "hotelInfo": normalize_for_mongo(assets.get("hotelInfo") or {}),
+        "cabInfo": normalize_for_mongo(assets.get("cabInfo") or {}),
+    }
 
 
 @app.get("/api/customer/bookings")
