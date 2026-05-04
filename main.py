@@ -635,6 +635,44 @@ def build_booking_document(
     return doc
 
 
+def build_booking_ref(value: str = "") -> str:
+    raw = safe_str(value)
+    if raw:
+        return raw[:80]
+    return f"HKE-{int(datetime.utcnow().timestamp())}"
+
+
+def serialize_customer_booking_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    booking_ref = build_booking_ref(
+        safe_str(doc.get("bookingRef"))
+        or safe_str(doc.get("bookingId"))
+        or safe_str(doc.get("razorpayOrderId"))
+    )
+
+    return {
+        "bookingRef": booking_ref,
+        "customerName": safe_str(doc.get("name")),
+        "customerPhone": safe_str(doc.get("phone")),
+        "customerEmail": safe_str(doc.get("email")),
+        "destination": safe_str(doc.get("destination")),
+        "packageName": safe_str(doc.get("tripName")),
+        "startDate": safe_str(doc.get("startDate")),
+        "endDate": safe_str(doc.get("endDate")),
+        "travellers": safe_int(doc.get("travellers")),
+        "rooms": safe_int(doc.get("rooms")),
+        "totalAmount": safe_float(doc.get("totalAmount", doc.get("amount"))),
+        "paidAmount": safe_float(doc.get("paidAmount")),
+        "remainingAmount": safe_float(doc.get("remainingAmount")),
+        "paymentStatus": safe_str(doc.get("paymentStatus")),
+        "bookingStatus": safe_str(doc.get("bookingStatus")),
+        "createdAt": safe_str(doc.get("createdAt")),
+        "updatedAt": safe_str(doc.get("updatedAt")),
+        "fullPaymentDeadline": safe_str(doc.get("fullPaymentDeadline")),
+        "razorpayOrderId": safe_str(doc.get("razorpayOrderId")),
+        "razorpayPaymentId": safe_str(doc.get("razorpayPaymentId")),
+    }
+
+
 def upsert_booking_mongo(booking_doc: Dict[str, Any]):
     booking_id = safe_str(booking_doc.get("bookingId"))
     if not booking_id:
@@ -3088,6 +3126,13 @@ def create_payment_order(payload: RazorpayOrderRequest):
         for k, v in payload.notes.items():
             notes[str(k)] = safe_str(v)[:255]
 
+    booking_ref = build_booking_ref(notes.get("booking_ref") or payload.receipt or "")
+    total_amount = safe_float(notes.get("total_amount", amount_rupees))
+    paid_amount = amount_rupees if safe_str(payload.payment_type).lower() in {"advance", "full", "custom"} else 0.0
+    remaining_amount = max(0.0, total_amount - paid_amount)
+    booking_status = "payment_pending"
+    payment_status = "order_created"
+
     try:
         order = rz_client.order.create({
             "amount": amount_paise,
@@ -3107,6 +3152,7 @@ def create_payment_order(payload: RazorpayOrderRequest):
         phone=payload.phone,
         name=payload.name,
         email=payload.email,
+        destination=safe_str(notes.get("destination")),
         trip_name=payload.trip_name,
         payment_type=payload.payment_type,
         amount=amount_rupees,
@@ -3114,8 +3160,20 @@ def create_payment_order(payload: RazorpayOrderRequest):
         status="payment_order_created",
         raw_payload=payload.model_dump(),
         extra={
+            "bookingRef": booking_ref,
             "receipt": receipt[:40],
             "razorpayOrderId": safe_str(order.get("id")),
+            "razorpayPaymentId": "",
+            "startDate": safe_str(notes.get("start_date")),
+            "endDate": safe_str(notes.get("end_date")),
+            "travellers": safe_int(notes.get("travellers")),
+            "rooms": safe_int(notes.get("rooms")),
+            "totalAmount": total_amount,
+            "paidAmount": paid_amount,
+            "remainingAmount": remaining_amount,
+            "paymentStatus": payment_status,
+            "bookingStatus": booking_status,
+            "fullPaymentDeadline": safe_str(notes.get("full_payment_deadline")),
             "notes": notes,
         }
     )
@@ -3123,6 +3181,10 @@ def create_payment_order(payload: RazorpayOrderRequest):
     upsert_payment_mongo({
         **booking_doc,
         "status": "order_created",
+        "bookingRef": booking_ref,
+        "amount": amount_rupees,
+        "paymentStatus": payment_status,
+        "bookingStatus": booking_status,
         "bookingId": safe_str(order.get("id")) or receipt,
     })
     upsert_customer_mongo(payload.phone, name=payload.name, email=payload.email)
@@ -3145,6 +3207,7 @@ def create_payment_order(payload: RazorpayOrderRequest):
         "name": payload.name,
         "email": payload.email,
         "phone": payload.phone,
+        "booking_ref": booking_ref,
         "trip_name": payload.trip_name,
         "payment_type": payload.payment_type
     }
@@ -3162,9 +3225,13 @@ def verify_payment(payload: RazorpayVerifyRequest):
         raise HTTPException(status_code=400, detail="Invalid Razorpay signature")
 
     booking_id = safe_str(payload.razorpay_order_id) or safe_str(payload.razorpay_payment_id)
+    existing_booking = None
+    if mongo_write_enabled():
+        existing_booking = get_collection("bookings").find_one({"bookingId": booking_id})
+
     booking_doc = build_booking_document(
         booking_id=booking_id,
-        phone="",
+        phone=safe_str((existing_booking or {}).get("phone")),
         status="payment_verified",
         payment={
             "razorpayOrderId": payload.razorpay_order_id,
@@ -3173,8 +3240,11 @@ def verify_payment(payload: RazorpayVerifyRequest):
             "verified": True,
         },
         extra={
+            "bookingRef": build_booking_ref(safe_str((existing_booking or {}).get("bookingRef")) or booking_id),
             "razorpayOrderId": payload.razorpay_order_id,
             "razorpayPaymentId": payload.razorpay_payment_id,
+            "paymentStatus": "verified",
+            "bookingStatus": safe_str((existing_booking or {}).get("bookingStatus"), "payment_received"),
         }
     )
     upsert_booking_mongo(booking_doc)
@@ -3186,9 +3256,9 @@ def verify_payment(payload: RazorpayVerifyRequest):
     return {
         "ok": True,
         "verified": True,
-        "booking_ref": "",
-        "booking_status": "received",
-        "payment_status": "paid",
+        "booking_ref": build_booking_ref(safe_str((existing_booking or {}).get("bookingRef")) or booking_id),
+        "booking_status": safe_str((existing_booking or {}).get("bookingStatus"), "payment_received"),
+        "payment_status": "verified",
         "message": "Payment verified successfully"
     }
 
@@ -3209,6 +3279,15 @@ def save_payment_confirmation(payload: SavePaymentRequest):
     remaining_amount = safe_float(
         payment.get("remainingAmount", payment.get("remainingBalance", 0))
     )
+    booking_ref = build_booking_ref(
+        safe_str(payment.get("bookingRef"))
+        or safe_str(customer.get("bookingRef"))
+        or safe_str(payment.get("razorpayOrderId"))
+        or safe_str(payment.get("razorpayPaymentId"))
+    )
+    payment_type = safe_str(payment.get("paymentType", payment.get("paymentLabel")))
+    booking_status = "confirmed"
+    payment_status = "paid" if remaining_amount <= 0 else "partially_paid"
 
     conn = get_db()
     cur = conn.cursor()
@@ -3235,8 +3314,8 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             safe_str(customer.get("endDate")),
             int(customer.get("travellers", 0) or 0),
             int(customer.get("rooms", 0) or 0),
-            safe_str(itinerary.get("title")),
-            safe_str(payment.get("paymentType", payment.get("paymentLabel"))),
+            safe_str(itinerary.get("title") or customer.get("packageName") or customer.get("destination")),
+            payment_type,
             paid_amount,
             total_amount,
             remaining_amount,
@@ -3263,7 +3342,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
     booking_id = (
         safe_str(payment.get("razorpayOrderId"))
         or safe_str(payment.get("razorpayPaymentId"))
-        or safe_str(itinerary.get("title"))
+        or booking_ref
     )
     booking_doc = build_booking_document(
         booking_id=booking_id,
@@ -3271,8 +3350,8 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         name=safe_str(customer.get("name")),
         email=safe_str(customer.get("email")),
         destination=safe_str(customer.get("destination")),
-        trip_name=safe_str(itinerary.get("title")),
-        payment_type=safe_str(payment.get("paymentType", payment.get("paymentLabel"))),
+        trip_name=safe_str(itinerary.get("title") or customer.get("packageName") or customer.get("destination")),
+        payment_type=payment_type,
         amount=paid_amount,
         currency="INR",
         status="payment_confirmation_saved",
@@ -3281,6 +3360,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         pricing=pricing,
         raw_payload=payload.model_dump(),
         extra={
+            "bookingRef": booking_ref,
             "startDate": safe_str(customer.get("startDate")),
             "endDate": safe_str(customer.get("endDate")),
             "travellers": safe_int(customer.get("travellers")),
@@ -3290,17 +3370,25 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             "razorpayOrderId": safe_str(payment.get("razorpayOrderId")),
             "razorpayPaymentId": safe_str(payment.get("razorpayPaymentId")),
             "totalAmount": total_amount,
+            "paidAmount": paid_amount,
             "remainingAmount": remaining_amount,
+            "paymentStatus": payment_status,
+            "bookingStatus": booking_status,
+            "fullPaymentDeadline": safe_str(payment.get("fullPaymentDeadline", payment.get("dueDate"))),
         }
     )
     upsert_booking_mongo(booking_doc)
     upsert_payment_mongo({
         **booking_doc,
         "status": "confirmed",
+        "bookingRef": booking_ref,
         "paidAmount": paid_amount,
         "totalAmount": total_amount,
         "remainingAmount": remaining_amount,
         "phone": clean_phone(safe_str(customer.get("phone"))),
+        "paymentStatus": payment_status,
+        "bookingStatus": booking_status,
+        "amount": paid_amount,
     })
     upsert_customer_mongo(
         safe_str(customer.get("phone")),
@@ -3315,7 +3403,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         "generated"
     )
 
-    return {"ok": True, "message": "Payment confirmation saved successfully"}
+    return {"ok": True, "message": "Payment confirmation saved successfully", "bookingRef": booking_ref}
 
 
 @app.get("/api/payment/by-payment-id/{payment_id}")
@@ -3419,6 +3507,29 @@ def list_orders(
     return {"ok": True, "orders": orders}
 
 
+@app.get("/api/customer/bookings")
+def customer_bookings(phone: str = Query(...)):
+    digits = clean_phone(phone)
+    if len(digits) != 10:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    if not is_phone_verified(digits):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not mongo_write_enabled():
+        return {"ok": True, "items": []}
+
+    rows = list(
+        get_collection("bookings")
+        .find({"phone": digits})
+        .sort([("updatedAt", -1), ("createdAt", -1)])
+        .limit(100)
+    )
+
+    return {
+        "ok": True,
+        "items": [serialize_customer_booking_doc(row) for row in rows]
+    }
+
+
 # =========================================================
 # ADMIN-PROTECTED BOOKING LIST
 # =========================================================
@@ -3441,6 +3552,25 @@ def admin_bookings(authorization: Optional[str] = Header(default=None)):
     conn.close()
 
     return {"ok": True, "items": rows}
+
+
+@app.get("/api/admin/bookings/mongo")
+def admin_bookings_mongo(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+    if not mongo_write_enabled():
+        return {"ok": True, "items": []}
+
+    rows = list(
+        get_collection("bookings")
+        .find({})
+        .sort([("updatedAt", -1), ("createdAt", -1)])
+        .limit(100)
+    )
+
+    return {
+        "ok": True,
+        "items": [serialize_customer_booking_doc(row) for row in rows]
+    }
 
 
 @app.get("/api/admin/crm")
