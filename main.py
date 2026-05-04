@@ -3235,23 +3235,40 @@ def delete_partner_rate(rate_id: str, authorization: Optional[str] = Header(defa
 @app.post("/api/ai/itinerary")
 def generate_itinerary(payload: PlannerRequest):
     data = payload.model_dump()
+    logger.info("AI itinerary request received")
     partner_context = get_partner_context_for_itinerary(data)
     route_map = build_route_map(data)
 
     try:
+        logger.info("Using OpenAI itinerary system")
         itinerary = call_openai_json(build_itinerary_prompt(data, partner_context=partner_context))
         source = "openai"
     except Exception as e:
+        logger.warning(
+            "OpenAI itinerary failed, using fallback: %s: %s",
+            type(e).__name__,
+            str(e)
+        )
         itinerary = fallback_itinerary(data)
         source = "fallback"
-        print(f"AI itinerary fallback used: {e}")
 
-    itinerary = apply_partner_context_to_itinerary(itinerary, partner_context)
+    try:
+        itinerary = apply_partner_context_to_itinerary(itinerary, partner_context)
+    except Exception as e:
+        logger.warning(
+            "Partner context apply failed for itinerary: %s: %s",
+            type(e).__name__,
+            str(e)
+        )
 
     try:
         send_itinerary_enquiry_email(data, itinerary)
     except Exception as email_error:
-        print(f"Failed to send enquiry email: {email_error}")
+        logger.warning(
+            "Failed to send itinerary enquiry email: %s: %s",
+            type(email_error).__name__,
+            str(email_error)
+        )
 
     save_ai_itinerary_mongo(data, itinerary, source)
     log_whatsapp_event(
