@@ -108,6 +108,7 @@ MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
+ENABLE_ITINERARY_IMAGES = os.getenv("ENABLE_ITINERARY_IMAGES", "false").lower() == "true"
 
 # Admin login
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
@@ -688,6 +689,7 @@ def serialize_customer_booking_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         "routeMap": normalize_for_mongo(doc.get("routeMap") or {}),
         "hotelInfo": normalize_for_mongo(doc.get("hotelInfo") or {}),
         "cabInfo": normalize_for_mongo(doc.get("cabInfo") or {}),
+        "itineraryImages": normalize_for_mongo(doc.get("itineraryImages") or []),
     }
 
 
@@ -800,6 +802,7 @@ def generate_and_store_booking_itinerary(booking_doc: Dict[str, Any]) -> Dict[st
         "routeMap": build_route_map(base_payload),
         "hotelInfo": build_hotel_info(base_payload),
         "cabInfo": build_cab_info(base_payload),
+        "itineraryImages": normalize_for_mongo(booking_doc.get("itineraryImages") or []),
     }
 
     try:
@@ -813,6 +816,18 @@ def generate_and_store_booking_itinerary(booking_doc: Dict[str, Any]) -> Dict[st
             "cabInfo": assets.get("cabInfo") or result["cabInfo"],
             "itinerarySource": safe_str(assets.get("source")),
         })
+        if not result["itineraryImages"]:
+            result["itineraryImages"] = generate_itinerary_images_safe(
+                {
+                    **booking_doc,
+                    "bookingRef": booking_ref,
+                    "destination": base_payload.get("destination"),
+                    "tripName": base_payload.get("packageName"),
+                    "hotelClass": base_payload.get("hotelClass"),
+                    "vehicle": base_payload.get("vehicle"),
+                },
+                result["latestItinerary"]
+            )
     except Exception:
         logger.exception("Booking itinerary generation failed for %s", booking_ref)
 
@@ -2109,6 +2124,105 @@ def build_cab_info(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_fallback_itinerary_image(destination: str, index: int = 0) -> str:
+    dest = safe_str(destination).lower()
+    candidates = ["media/hero-banner.jpg"]
+
+    if "kashmir" in dest:
+        candidates = ["media/kashmir-package.jpg", "media/kashmir.jpg", "media/kashmir-package.png"]
+    elif "manali" in dest:
+        candidates = ["media/manali.jpg", "media/manali-package.jpg", "media/manali-package.png", "media/manali1.jpg"]
+    elif "kerala" in dest:
+        candidates = ["media/kerala-package.jpg", "media/kerala.jpg", "media/kerala-package.png"]
+    elif "leh" in dest or "ladakh" in dest:
+        candidates = ["media/leh-ladakh.jpg", "media/leh-ladakh2.png"]
+
+    for path in candidates:
+        if os.path.exists(os.path.join("godaddy-frontend", path.replace("/", os.sep))):
+            return path
+    return "media/hero-banner.jpg"
+
+
+def build_itinerary_image_prompts(booking: Dict[str, Any], itinerary: Dict[str, Any]) -> List[Dict[str, Any]]:
+    destination = safe_str(booking.get("destination") or booking.get("tripName"))
+    hotel_class = safe_str(booking.get("hotelClass"), "premium")
+    vehicle = safe_str(booking.get("vehicle"), "touring vehicle")
+    route = safe_str((itinerary.get("meta") or {}).get("route"))
+
+    prompts = [{
+        "title": f"{destination or 'HKE Trip'} Cover",
+        "prompt": (
+            f"Luxury travel brochure cover for Himalayan Kerala Expeditions in {destination or 'India'}, "
+            f"cinematic landscape, premium {hotel_class} travel mood, elegant Indian tourism aesthetic, "
+            f"scenic route {route or destination}, polished destination marketing photograph."
+        ).strip(),
+        "fallbackImage": get_fallback_itinerary_image(destination, 0),
+    }]
+
+    for idx, day in enumerate((itinerary.get("days") or [])[:3], start=1):
+        day_title = safe_str(day.get("title"), f"Day {idx}")
+        day_route = safe_str(day.get("route"), destination)
+        prompts.append({
+            "title": f"Day {idx} - {day_title}",
+            "prompt": (
+                f"Travel photography for {destination or 'India'} itinerary day {idx}, {day_title}, route {day_route}, "
+                f"comfortable {vehicle}, premium guided holiday scene, vibrant natural lighting, realistic destination visuals."
+            ).strip(),
+            "fallbackImage": get_fallback_itinerary_image(destination, idx),
+        })
+
+    return prompts[:4]
+
+
+def generate_itinerary_images_safe(booking: Dict[str, Any], itinerary: Dict[str, Any]) -> List[Dict[str, Any]]:
+    prompts = build_itinerary_image_prompts(booking, itinerary)
+    now_ts = utc_now_iso()
+
+    fallback_items = [{
+        "title": item["title"],
+        "prompt": item["prompt"],
+        "imageUrl": item["fallbackImage"],
+        "source": "fallback",
+        "createdAt": now_ts,
+    } for item in prompts]
+
+    if not ENABLE_ITINERARY_IMAGES or not client:
+        return fallback_items
+
+    results: List[Dict[str, Any]] = []
+    for item in prompts:
+        try:
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=item["prompt"],
+                size="1024x1024",
+                quality="standard",
+                n=1,
+            )
+            image_url = safe_str((response.data[0] or {}).url if getattr(response, "data", None) else "")
+            if image_url:
+                results.append({
+                    "title": item["title"],
+                    "prompt": item["prompt"],
+                    "imageUrl": image_url,
+                    "source": "openai",
+                    "createdAt": now_ts,
+                })
+                continue
+        except Exception:
+            logger.exception("Itinerary image generation failed for booking=%s title=%s", safe_str(booking.get("bookingRef")), item["title"])
+
+        results.append({
+            "title": item["title"],
+            "prompt": item["prompt"],
+            "imageUrl": item["fallbackImage"],
+            "source": "fallback",
+            "createdAt": now_ts,
+        })
+
+    return results
+
+
 def build_booking_itinerary_request(data: Dict[str, Any]) -> Dict[str, Any]:
     start_date = safe_str(data.get("startDate"))
     end_date = safe_str(data.get("endDate"))
@@ -2359,6 +2473,20 @@ class SavePaymentRequest(BaseModel):
 
 
 class BookingItineraryGenerateRequest(BaseModel):
+    phone: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        if v in (None, ""):
+            return None
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+
+class BookingImagesGenerateRequest(BaseModel):
     phone: Optional[str] = None
 
     @field_validator("phone")
@@ -3641,6 +3769,7 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             "routeMap": route_map,
             "hotelInfo": hotel_info,
             "cabInfo": cab_info,
+            "itineraryImages": normalize_for_mongo(customer.get("itineraryImages") or []),
             "latestItinerary": normalize_for_mongo(itinerary),
             "itineraryStatus": "generated" if itinerary else "pending",
             "itineraryGeneratedAt": utc_now_iso() if itinerary else "",
@@ -3678,6 +3807,16 @@ def save_payment_confirmation(payload: SavePaymentRequest):
             if not has_structured_itinerary:
                 generated_assets = generate_and_store_booking_itinerary(booking_doc)
                 booking_doc.update(generated_assets)
+            elif not booking_doc.get("itineraryImages"):
+                image_assets = generate_itinerary_images_safe(booking_doc, itinerary)
+                booking_doc["itineraryImages"] = image_assets
+                safe_mongo_write(
+                    "update_booking_images",
+                    lambda: get_collection("bookings").update_one(
+                        {"bookingId": booking_id},
+                        {"$set": {"itineraryImages": normalize_for_mongo(image_assets)}}
+                    )
+                )
         except Exception:
             logger.exception("Post-payment itinerary generation failed for %s", booking_ref)
 
@@ -3817,6 +3956,63 @@ def generate_booking_itinerary(
         "routeMap": normalize_for_mongo(assets.get("routeMap") or {}),
         "hotelInfo": normalize_for_mongo(assets.get("hotelInfo") or {}),
         "cabInfo": normalize_for_mongo(assets.get("cabInfo") or {}),
+    }
+
+
+@app.post("/api/bookings/{booking_ref}/generate-images")
+def generate_booking_images(
+    booking_ref: str,
+    payload: BookingImagesGenerateRequest,
+    authorization: Optional[str] = Header(default=None)
+):
+    if not mongo_write_enabled():
+        raise HTTPException(status_code=500, detail="MongoDB is not configured")
+
+    booking = get_collection("bookings").find_one({
+        "$or": [
+            {"bookingRef": booking_ref},
+            {"bookingId": booking_ref},
+            {"razorpayOrderId": booking_ref},
+        ]
+    })
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    is_admin = False
+    if authorization:
+        try:
+            require_admin_token(authorization)
+            is_admin = True
+        except HTTPException:
+            is_admin = False
+
+    booking_phone = clean_phone(safe_str(booking.get("phone")))
+    requested_phone = clean_phone(safe_str(payload.phone or booking_phone))
+    if not is_admin and (len(requested_phone) != 10 or requested_phone != booking_phone or not is_phone_verified(requested_phone)):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    existing_images = booking.get("itineraryImages") or []
+    if existing_images:
+        return {"ok": True, "bookingRef": build_booking_ref(safe_str(booking.get("bookingRef")) or safe_str(booking.get("bookingId"))), "itineraryImages": normalize_for_mongo(existing_images)}
+
+    itinerary = booking.get("latestItinerary") or booking.get("itinerary") or {}
+    if not itinerary:
+        generated = generate_and_store_booking_itinerary(booking)
+        itinerary = generated.get("latestItinerary") or {}
+        booking = get_collection("bookings").find_one({"bookingId": safe_str(booking.get("bookingId"))}) or booking
+
+    images = generate_itinerary_images_safe(booking, itinerary)
+    safe_mongo_write(
+        "update_booking_images_manual",
+        lambda: get_collection("bookings").update_one(
+            {"bookingId": safe_str(booking.get("bookingId"))},
+            {"$set": {"itineraryImages": normalize_for_mongo(images), "updatedAt": utc_now_iso()}}
+        )
+    )
+    return {
+        "ok": True,
+        "bookingRef": build_booking_ref(safe_str(booking.get("bookingRef")) or safe_str(booking.get("bookingId"))),
+        "itineraryImages": normalize_for_mongo(images)
     }
 
 
