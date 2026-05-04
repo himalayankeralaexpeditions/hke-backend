@@ -1614,6 +1614,47 @@ def require_admin_token(authorization: Optional[str]) -> Dict[str, Any]:
     return session
 
 
+def serialize_admin_mongo_value(value: Any) -> Any:
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): serialize_admin_mongo_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [serialize_admin_mongo_value(item) for item in value]
+    return value
+
+
+def sanitize_admin_mongo_doc(doc: Dict[str, Any], blocked_fields: Optional[set] = None) -> Dict[str, Any]:
+    blocked = blocked_fields or set()
+    clean_doc: Dict[str, Any] = {}
+
+    for key, value in (doc or {}).items():
+        if key in blocked:
+            continue
+        clean_doc[str(key)] = serialize_admin_mongo_value(value)
+
+    return clean_doc
+
+
+def get_admin_collection_snapshot(
+    name: str,
+    *,
+    blocked_fields: Optional[set] = None,
+    sort_fields: Optional[List[Any]] = None,
+    limit: int = 100
+) -> Dict[str, Any]:
+    if not mongo_write_enabled():
+        return {"total": 0, "items": []}
+
+    collection = get_collection(name)
+    total = collection.count_documents({})
+    rows = list(collection.find({}).sort(sort_fields or [("updatedAt", -1), ("createdAt", -1)]).limit(limit))
+    items = [sanitize_admin_mongo_doc(row, blocked_fields) for row in rows]
+    return {"total": total, "items": items}
+
+
 def money_to_paise(value: Any) -> int:
     try:
         return int(round(float(value or 0) * 100))
@@ -3341,6 +3382,67 @@ def admin_bookings(authorization: Optional[str] = Header(default=None)):
     conn.close()
 
     return {"ok": True, "items": rows}
+
+
+@app.get("/api/admin/crm")
+def admin_crm(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+
+    blocked_common = {
+        "otp",
+        "otp_code",
+        "otp_hash",
+        "rawOtp",
+        "mongo_uri",
+        "mongodb_uri",
+        "msg91_auth_key",
+        "msg91_key",
+        "razorpay_key_secret",
+        "secret",
+        "authkey",
+    }
+
+    customers = get_admin_collection_snapshot(
+        "customers",
+        blocked_fields=blocked_common,
+        sort_fields=[("updatedAt", -1), ("createdAt", -1)]
+    )
+    ai_itineraries = get_admin_collection_snapshot(
+        "ai_itineraries",
+        blocked_fields=blocked_common,
+        sort_fields=[("updatedAt", -1), ("createdAt", -1)]
+    )
+    bookings = get_admin_collection_snapshot(
+        "bookings",
+        blocked_fields=blocked_common,
+        sort_fields=[("updatedAt", -1), ("createdAt", -1)]
+    )
+    payments = get_admin_collection_snapshot(
+        "payments",
+        blocked_fields=blocked_common,
+        sort_fields=[("updatedAt", -1), ("createdAt", -1)]
+    )
+    whatsapp_logs = get_admin_collection_snapshot(
+        "whatsapp_logs",
+        blocked_fields=blocked_common,
+        sort_fields=[("createdAt", -1), ("updatedAt", -1)]
+    )
+
+    return {
+        "ok": True,
+        "totals": {
+            "customers": customers["total"],
+            "ai_itineraries": ai_itineraries["total"],
+            "bookings": bookings["total"],
+            "payments": payments["total"],
+            "whatsapp_logs": whatsapp_logs["total"],
+        },
+        "customers": customers["items"],
+        "ai_itineraries": ai_itineraries["items"],
+        "bookings": bookings["items"],
+        "payments": payments["items"],
+        "whatsapp_logs": whatsapp_logs["items"],
+    }
 
 
 if __name__ == "__main__":
