@@ -136,7 +136,7 @@ MSG91_OTP_TEMPLATE_ID = os.getenv("MSG91_OTP_TEMPLATE_ID", os.getenv("MSG91_DLT_
 MSG91_DLT_TEMPLATE_ID = MSG91_OTP_TEMPLATE_ID
 MSG91_ENTITY_ID = os.getenv("MSG91_ENTITY_ID", "").strip()
 MSG91_DLT_TEMPLATE_VERSION = os.getenv("MSG91_DLT_TEMPLATE_VERSION", "v1.1").strip()
-MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "var1").strip()
+MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "OTP").strip() or "OTP"
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
@@ -1455,6 +1455,62 @@ def get_last_otp_provider_error() -> str:
     return safe_str(LAST_OTP_PROVIDER_ERROR_TYPE)
 
 
+def summarize_msg91_response(response_data: Any) -> Dict[str, Any]:
+    if isinstance(response_data, dict):
+        return {
+            "type": safe_str(response_data.get("type")),
+            "message": safe_str(response_data.get("message")),
+            "status": safe_str(response_data.get("status")),
+            "requestId": safe_str(
+                response_data.get("requestId")
+                or response_data.get("request_id")
+                or response_data.get("requestIdValue")
+            ),
+        }
+
+    return {
+        "raw": safe_str(response_data)[:300]
+    }
+
+
+def is_msg91_accept_response(response: requests.Response, response_data: Any) -> bool:
+    if response.status_code not in (200, 201, 202):
+        return False
+
+    normalized = json.dumps(response_data, default=str).lower()
+    rejection_tokens = (
+        "error",
+        "failed",
+        "failure",
+        "rejected",
+        "invalid template",
+        "template id missing",
+        "template id invalid",
+        "permission denied",
+    )
+    if any(token in normalized for token in rejection_tokens):
+        return False
+
+    acceptance_tokens = (
+        '"type": "success"',
+        '"status": "success"',
+        '"status": "accepted"',
+        '"message": "success"',
+        '"message": "sent"',
+    )
+    if any(token in normalized for token in acceptance_tokens):
+        return True
+
+    if isinstance(response_data, dict):
+        message = safe_str(response_data.get("message")).lower()
+        status = safe_str(response_data.get("status")).lower()
+        msg_type = safe_str(response_data.get("type")).lower()
+        if message == "success" or status in {"success", "accepted"} or msg_type == "success":
+            return True
+
+    return False
+
+
 def otp_storage_available() -> bool:
     try:
         conn = get_db()
@@ -1477,24 +1533,35 @@ def send_msg91_otp(mobile: str, otp: str):
         set_last_otp_provider_error("missing_auth_key")
         raise RuntimeError("MSG91 auth key is not configured")
 
-    if not MSG91_FLOW_ID:
-        logger.error("OTP provider misconfigured: MSG91_FLOW_ID / MSG91_SMS_FLOW_ID not configured")
-        set_last_otp_provider_error("missing_flow_id")
-        raise RuntimeError("MSG91 flow id is not configured")
+    if not MSG91_OTP_TEMPLATE_ID:
+        logger.error("OTP provider misconfigured: MSG91_OTP_TEMPLATE_ID / MSG91_DLT_TEMPLATE_ID not configured")
+        set_last_otp_provider_error("missing_template_id")
+        raise RuntimeError("MSG91 template id is not configured")
 
     if not MSG91_SENDER_ID:
         logger.error("OTP provider misconfigured: MSG91_SENDER_ID not configured")
         set_last_otp_provider_error("missing_sender_id")
         raise RuntimeError("MSG91 sender id is not configured")
 
-    variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
-    url = "https://control.msg91.com/api/v5/flow/"
+    normalized_mobile = safe_str(mobile)
+    if normalized_mobile.startswith("+"):
+        normalized_mobile = normalized_mobile[1:]
+    if not normalized_mobile.startswith("91"):
+        normalized_mobile = f"91{normalized_mobile}"
+
+    variable_name = MSG91_OTP_VARIABLE_NAME or "OTP"
+    url = "https://control.msg91.com/api/v5/sms/"
     payload = {
-        "flow_id": MSG91_FLOW_ID,
+        "template_id": MSG91_OTP_TEMPLATE_ID,
+        "templateId": MSG91_OTP_TEMPLATE_ID,
         "sender": MSG91_SENDER_ID,
-        "mobiles": f"91{mobile}",
+        "mobiles": normalized_mobile,
+        "short_url": 0,
         variable_name: otp
     }
+    if MSG91_ENTITY_ID:
+        payload["PE_ID"] = MSG91_ENTITY_ID
+        payload["entity_id"] = MSG91_ENTITY_ID
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
@@ -1519,29 +1586,31 @@ def send_msg91_otp(mobile: str, otp: str):
             "MSG91 OTP send failed for mobile=%s status=%s response=%s",
             mobile,
             response.status_code,
-            response.text
+            json.dumps(summarize_msg91_response(response_data), default=str)
         )
         raise RuntimeError(f"MSG91 send failed: {response.text}")
 
-    lower_dump = json.dumps(response_data).lower()
-
-    if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
+    if not is_msg91_accept_response(response, response_data):
         set_last_otp_provider_error("provider_rejected")
         logger.error(
             "MSG91 OTP rejected for mobile=%s response=%s",
             mobile,
-            json.dumps(response_data, default=str)
+            json.dumps(summarize_msg91_response(response_data), default=str)
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
 
     set_last_otp_provider_error("")
     logger.info(
-        "MSG91 OTP response for mobile=%s response=%s",
+        "MSG91 OTP accepted for mobile=%s response=%s",
         mobile,
-        json.dumps(response_data, default=str)
+        json.dumps(summarize_msg91_response(response_data), default=str)
     )
 
-    return response_data
+    return {
+        "ok": True,
+        "provider": "msg91",
+        "response": summarize_msg91_response(response_data)
+    }
 
 
 def build_itinerary_prompt(data: dict, partner_context: Optional[Dict[str, Any]] = None) -> str:
@@ -2262,13 +2331,14 @@ def get_otp_debug_data() -> Dict[str, Any]:
         "otp": {
             "sendRouteExists": True,
             "verifyRouteExists": True,
-            "providerConfigured": bool(MSG91_AUTH_KEY and MSG91_FLOW_ID and MSG91_SENDER_ID),
+            "providerConfigured": bool(MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID),
             "authKeyPresent": bool(MSG91_AUTH_KEY),
-            "templateOrFlowConfigured": bool(MSG91_FLOW_ID or MSG91_OTP_TEMPLATE_ID),
+            "templateOrFlowConfigured": bool(MSG91_OTP_TEMPLATE_ID),
             "senderConfigured": bool(MSG91_SENDER_ID),
             "entityConfigured": bool(MSG91_ENTITY_ID),
             "storageAvailable": otp_storage_available(),
             "devMode": OTP_DEV_MODE,
+            "variableName": MSG91_OTP_VARIABLE_NAME,
             "lastProviderErrorType": get_last_otp_provider_error(),
         }
     }
@@ -2950,7 +3020,7 @@ def health():
         "mongo_configured": bool(MONGODB_URI),
         "mongo_connected": mongo_write_enabled(),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
-        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_SMS_FLOW_ID),
+        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID),
         "msg91_dlt_template_configured": bool(MSG91_DLT_TEMPLATE_ID),
         "msg91_dlt_template_version": MSG91_DLT_TEMPLATE_VERSION,
         "msg91_variable_name": MSG91_OTP_VARIABLE_NAME,
