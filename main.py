@@ -25,6 +25,12 @@ from openai import OpenAI
 from passlib.context import CryptContext
 from pymongo import MongoClient
 import razorpay
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials as GoogleServiceAccountCredentials
+except Exception:  # pragma: no cover - dependency may be unavailable in some environments
+    gspread = None
+    GoogleServiceAccountCredentials = None
 
 load_dotenv()
 logger = logging.getLogger("hke.backend")
@@ -109,6 +115,12 @@ OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
 ENABLE_ITINERARY_IMAGES = os.getenv("ENABLE_ITINERARY_IMAGES", "false").lower() == "true"
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+GOOGLE_ENQUIRY_SHEET_ID = os.getenv("GOOGLE_ENQUIRY_SHEET_ID", "").strip()
+GOOGLE_BOOKING_SHEET_ID = os.getenv("GOOGLE_BOOKING_SHEET_ID", "").strip()
+GOOGLE_ENQUIRY_TAB = os.getenv("GOOGLE_ENQUIRY_TAB", "Enquiries").strip() or "Enquiries"
+GOOGLE_BOOKING_TAB = os.getenv("GOOGLE_BOOKING_TAB", "ConfirmedBookings").strip() or "ConfirmedBookings"
+OWNER_WHATSAPP_NUMBER = os.getenv("OWNER_WHATSAPP_NUMBER", "919797294747").strip()
 
 # Admin login
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
@@ -136,6 +148,7 @@ mongo_client = (
     else None
 )
 mongo_ready = False
+GOOGLE_SHEETS_CLIENT = None
 
 # =========================================================
 # DB
@@ -893,6 +906,220 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def format_display_date_range(start_date: str, end_date: str) -> str:
+    start = safe_str(start_date)
+    end = safe_str(end_date)
+    if start and end:
+        return f"{start} to {end}"
+    return start or end or "-"
+
+
+def format_inr_display(value: Any) -> str:
+    return f"Rs {round(safe_float(value, 0.0)):,}"
+
+
+def get_google_sheets_client():
+    global GOOGLE_SHEETS_CLIENT
+
+    if GOOGLE_SHEETS_CLIENT is not None:
+        return GOOGLE_SHEETS_CLIENT
+
+    if not GOOGLE_APPLICATION_CREDENTIALS:
+        logger.info("Google Sheets skipped: GOOGLE_APPLICATION_CREDENTIALS not configured")
+        return None
+
+    if not os.path.exists(GOOGLE_APPLICATION_CREDENTIALS):
+        logger.warning("Google Sheets skipped: credentials file not found")
+        return None
+
+    if not gspread or not GoogleServiceAccountCredentials:
+        logger.warning("Google Sheets skipped: google client libraries not available")
+        return None
+
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        credentials = GoogleServiceAccountCredentials.from_service_account_file(
+            GOOGLE_APPLICATION_CREDENTIALS,
+            scopes=scopes,
+        )
+        GOOGLE_SHEETS_CLIENT = gspread.authorize(credentials)
+        return GOOGLE_SHEETS_CLIENT
+    except Exception:
+        logger.exception("Google Sheets skipped: unable to initialize client")
+        return None
+
+
+def get_google_sheet_worksheet(sheet_id: str, tab_name: str):
+    if not sheet_id:
+        logger.info("Google Sheets skipped: missing sheet id for tab %s", tab_name)
+        return None
+
+    client_obj = get_google_sheets_client()
+    if not client_obj:
+        return None
+
+    try:
+        spreadsheet = client_obj.open_by_key(sheet_id)
+        return spreadsheet.worksheet(tab_name)
+    except Exception:
+        logger.exception("Google Sheets skipped: unable to access sheet tab %s", tab_name)
+        return None
+
+
+def append_row_to_google_sheet(sheet_id: str, tab_name: str, row_values: List[Any], success_log: str):
+    worksheet = get_google_sheet_worksheet(sheet_id, tab_name)
+    if not worksheet:
+        return
+
+    try:
+        worksheet.append_row([safe_str(value) for value in row_values], value_input_option="USER_ENTERED")
+        logger.info(success_log)
+    except Exception:
+        logger.exception("Google Sheets append failed for tab %s", tab_name)
+
+
+def append_enquiry_to_sheet(data: Dict[str, Any]):
+    if not GOOGLE_ENQUIRY_SHEET_ID:
+        logger.info("Google Sheets skipped: GOOGLE_ENQUIRY_SHEET_ID not configured")
+        return
+
+    itinerary = data.get("itinerary") or {}
+    enquiry = data.get("enquiry") or {}
+    row = [
+        utc_now_iso(),
+        safe_str(enquiry.get("name")),
+        clean_phone(safe_str(enquiry.get("phone"))),
+        safe_str(enquiry.get("email")),
+        safe_str(enquiry.get("fromLocation")),
+        safe_str(enquiry.get("destination")),
+        safe_str(enquiry.get("endPoint")),
+        safe_str(enquiry.get("startDate")),
+        safe_str(enquiry.get("endDate")),
+        safe_int(enquiry.get("days")),
+        safe_int(enquiry.get("travellers")),
+        safe_int(enquiry.get("rooms")),
+        safe_str(enquiry.get("budget")),
+        safe_str(enquiry.get("travelType")),
+        safe_str(enquiry.get("hotelClass")),
+        safe_str(enquiry.get("vehicle")),
+        safe_str(enquiry.get("guide")),
+        "Yes" if bool(enquiry.get("needFood")) else "No",
+        safe_str(enquiry.get("foodPreference")),
+        ", ".join([safe_str(place) for place in enquiry.get("places") or [] if safe_str(place)]),
+        safe_str(enquiry.get("notes")),
+        safe_str(itinerary.get("title")),
+        safe_str(data.get("source"), "AI Planner"),
+    ]
+    append_row_to_google_sheet(
+        GOOGLE_ENQUIRY_SHEET_ID,
+        GOOGLE_ENQUIRY_TAB,
+        row,
+        "Enquiry saved to Google Sheet",
+    )
+
+
+def append_booking_to_sheet(data: Dict[str, Any]):
+    if not GOOGLE_BOOKING_SHEET_ID:
+        logger.info("Google Sheets skipped: GOOGLE_BOOKING_SHEET_ID not configured")
+        return
+
+    customer = data.get("customer") or {}
+    payment = data.get("payment") or {}
+    row = [
+        utc_now_iso(),
+        safe_str(data.get("bookingRef")),
+        safe_str(customer.get("name")),
+        clean_phone(safe_str(customer.get("phone"))),
+        safe_str(customer.get("email")),
+        safe_str(data.get("packageName")),
+        safe_str(customer.get("destination")),
+        safe_str(customer.get("startDate")),
+        safe_str(customer.get("endDate")),
+        safe_int(customer.get("travellers")),
+        safe_int(customer.get("rooms")),
+        safe_str(customer.get("vehicle")),
+        safe_str(customer.get("hotelClass")),
+        safe_float(data.get("totalAmount")),
+        safe_float(data.get("advancePaid")),
+        safe_float(data.get("remainingAmount")),
+        safe_str(data.get("paymentStatus")),
+        safe_str(payment.get("razorpayOrderId")),
+        safe_str(payment.get("razorpayPaymentId")),
+    ]
+    append_row_to_google_sheet(
+        GOOGLE_BOOKING_SHEET_ID,
+        GOOGLE_BOOKING_TAB,
+        row,
+        "Booking saved to Google Sheet",
+    )
+
+
+def send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
+    message_type = safe_str(message_type).lower()
+    owner_number = safe_str(OWNER_WHATSAPP_NUMBER)
+
+    if not owner_number:
+        logger.info("Owner WhatsApp alert skipped: owner number not configured")
+        return
+
+    if message_type == "enquiry":
+        message = "\n".join([
+            "New HKE Enquiry ✅",
+            f"Name: {safe_str(data.get('name'))}",
+            f"Phone: {clean_phone(safe_str(data.get('phone')))}",
+            f"Destination: {safe_str(data.get('destination'))}",
+            f"Dates: {format_display_date_range(safe_str(data.get('startDate')), safe_str(data.get('endDate')))}",
+            f"Travellers: {safe_str(data.get('travellers'))}",
+            f"Budget: {safe_str(data.get('budget'))}",
+            f"Places: {', '.join([safe_str(place) for place in data.get('places') or [] if safe_str(place)]) or '-'}",
+            "Source: AI Planner",
+        ])
+    elif message_type == "booking":
+        payment = data.get("payment") or {}
+        message = "\n".join([
+            "New Confirmed Booking ✅",
+            f"Booking Ref: {safe_str(data.get('bookingRef'))}",
+            f"Name: {safe_str(data.get('name'))}",
+            f"Phone: {clean_phone(safe_str(data.get('phone')))}",
+            f"Package: {safe_str(data.get('packageName'))}",
+            f"Dates: {format_display_date_range(safe_str(data.get('startDate')), safe_str(data.get('endDate')))}",
+            f"Total: {format_inr_display(data.get('totalAmount'))}",
+            f"Paid: {format_inr_display(data.get('advancePaid'))}",
+            f"Remaining: {format_inr_display(data.get('remainingAmount'))}",
+            f"Payment Status: {safe_str(data.get('paymentStatus'))}",
+        ])
+    else:
+        logger.info("Owner WhatsApp alert skipped: unsupported message type %s", message_type)
+        return
+
+    logger.info("Owner WhatsApp alert skipped: provider not configured")
+    log_whatsapp_event(owner_number, f"owner_{message_type}_alert", message, "skipped")
+
+
+def safe_append_enquiry_to_sheet(data: Dict[str, Any]):
+    try:
+        append_enquiry_to_sheet(data)
+    except Exception:
+        logger.exception("Enquiry Google Sheet hook failed")
+
+
+def safe_append_booking_to_sheet(data: Dict[str, Any]):
+    try:
+        append_booking_to_sheet(data)
+    except Exception:
+        logger.exception("Booking Google Sheet hook failed")
+
+
+def safe_send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
+    try:
+        send_owner_whatsapp_alert(message_type, data)
+    except Exception:
+        logger.exception("Owner WhatsApp alert failed")
 
 
 def serialize_customer_profile(row: sqlite3.Row) -> Dict[str, Any]:
@@ -3277,6 +3504,12 @@ def generate_itinerary(payload: PlannerRequest):
         f"AI itinerary prepared for {safe_str(data.get('destination'))}",
         "generated"
     )
+    safe_append_enquiry_to_sheet({
+        "enquiry": data,
+        "itinerary": itinerary,
+        "source": "AI Planner",
+    })
+    safe_send_owner_whatsapp_alert("enquiry", data)
 
     return {
         "ok": True,
@@ -3817,6 +4050,29 @@ def save_payment_confirmation(payload: SavePaymentRequest):
         f"Payment confirmation saved for {safe_str(itinerary.get('title') or customer.get('destination'))}",
         "generated"
     )
+    safe_append_booking_to_sheet({
+        "bookingRef": booking_ref,
+        "packageName": safe_str(itinerary.get("title") or customer.get("packageName") or customer.get("destination")),
+        "customer": customer,
+        "payment": payment,
+        "totalAmount": total_amount,
+        "advancePaid": paid_amount,
+        "remainingAmount": remaining_amount,
+        "paymentStatus": payment_status,
+    })
+    safe_send_owner_whatsapp_alert("booking", {
+        "bookingRef": booking_ref,
+        "name": safe_str(customer.get("name")),
+        "phone": safe_str(customer.get("phone")),
+        "packageName": safe_str(itinerary.get("title") or customer.get("packageName") or customer.get("destination")),
+        "startDate": safe_str(customer.get("startDate")),
+        "endDate": safe_str(customer.get("endDate")),
+        "totalAmount": total_amount,
+        "advancePaid": paid_amount,
+        "remainingAmount": remaining_amount,
+        "paymentStatus": payment_status,
+        "payment": payment,
+    })
 
     if mongo_write_enabled():
         try:
