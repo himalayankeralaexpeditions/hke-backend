@@ -137,6 +137,10 @@ MSG91_DLT_TEMPLATE_ID = MSG91_OTP_TEMPLATE_ID
 MSG91_ENTITY_ID = os.getenv("MSG91_ENTITY_ID", "").strip()
 MSG91_DLT_TEMPLATE_VERSION = os.getenv("MSG91_DLT_TEMPLATE_VERSION", "v1.1").strip()
 MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "OTP").strip() or "OTP"
+MSG91_OTP_MESSAGE_TEMPLATE = os.getenv(
+    "MSG91_OTP_MESSAGE_TEMPLATE",
+    "Dear Customer, your OTP for login to Himalayan Kerala Expeditions is {OTP}"
+).strip()
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
@@ -1511,6 +1515,17 @@ def is_msg91_accept_response(response: requests.Response, response_data: Any) ->
     return False
 
 
+def build_msg91_otp_message(otp: str) -> str:
+    template = safe_str(
+        MSG91_OTP_MESSAGE_TEMPLATE,
+        "Dear Customer, your OTP for login to Himalayan Kerala Expeditions is {OTP}"
+    )
+    message = template.replace("{OTP}", otp)
+    message = message.replace("##OTP##", otp)
+    message = message.replace("{{OTP}}", otp)
+    return message
+
+
 def otp_storage_available() -> bool:
     try:
         conn = get_db()
@@ -1550,6 +1565,7 @@ def send_msg91_otp(mobile: str, otp: str):
         normalized_mobile = f"91{normalized_mobile}"
 
     variable_name = MSG91_OTP_VARIABLE_NAME or "OTP"
+    resolved_message = build_msg91_otp_message(otp)
     url = "https://control.msg91.com/api/v5/sms/"
     payload = {
         "template_id": MSG91_OTP_TEMPLATE_ID,
@@ -1557,6 +1573,7 @@ def send_msg91_otp(mobile: str, otp: str):
         "sender": MSG91_SENDER_ID,
         "mobiles": normalized_mobile,
         "short_url": 0,
+        "message": resolved_message,
         variable_name: otp
     }
     if MSG91_ENTITY_ID:
