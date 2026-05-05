@@ -1,0 +1,3 @@
+window.HKE_CONFIG = {
+  GOOGLE_MAPS_API_KEY: "AIzaSyD35jeriv3B-pPKZUGMNl6UwHIA2fHbdTI"
+};

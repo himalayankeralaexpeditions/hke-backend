@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Generated Itinerary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Professional AI-generated itinerary by Himalayan Kerala Expeditions." />
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root{
+      --bg:#070A10;
+      --panel:rgba(8,13,22,.78);
+      --panel2:rgba(255,255,255,.05);
+      --stroke:rgba(255,255,255,.10);
+      --gold:#D8B768;
+      --gold2:#F0D08A;
+      --text:#F4F7FB;
+      --muted:rgba(244,247,251,.74);
+      --radius-xl:28px;
+      --radius-lg:22px;
+      --radius-md:16px;
+      --shadow:0 20px 60px rgba(0,0,0,.34);
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      font-family:'Inter',sans-serif;
+      color:var(--text);
+      background:
+        linear-gradient(180deg, rgba(5,8,12,.86), rgba(6,10,15,.92)),
+        url('media/home_bg.png') center/cover fixed no-repeat;
+      min-height:100vh;
+    }
+
+    .wrap{
+      width:min(1240px,92%);
+      margin:24px auto 60px;
+    }
+
+    .glass{
+      background:var(--panel);
+      border:1px solid var(--stroke);
+      border-radius:var(--radius-xl);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      box-shadow:var(--shadow);
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      padding:18px 20px;
+      margin-bottom:18px;
+      flex-wrap:wrap;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      min-width:0;
+    }
+
+    .brand-logo{
+      width:72px;
+      height:72px;
+      border-radius:20px;
+      background:#fff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+    }
+
+    .brand-logo img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      padding:8px;
+    }
+
+    .brand-copy h1{
+      margin:0;
+      font-size:clamp(24px,3vw,36px);
+      font-weight:800;
+      line-height:1.05;
+      letter-spacing:-.03em;
+    }
+
+    .brand-copy p{
+      margin:6px 0 0;
+      color:var(--gold);
+      font-size:clamp(15px,1.8vw,20px);
+      font-weight:700;
+    }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .btn{
+      border:none;
+      text-decoration:none;
+      cursor:pointer;
+      padding:14px 22px;
+      border-radius:999px;
+      font-weight:800;
+      font-size:16px;
+      font-family:inherit;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#111;
+    }
+
+    .btn-secondary{
+      color:#fff;
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.16);
+    }
+
+    .hero{
+      padding:28px;
+      margin-bottom:18px;
+    }
+
+    .hero-title{
+      margin:0 0 12px;
+      font-size:clamp(30px,4vw,56px);
+      line-height:1.03;
+      font-weight:800;
+      letter-spacing:-.04em;
+      color:var(--gold);
+      max-width:1000px;
+    }
+
+    .hero-summary{
+      margin:0;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.85;
+      max-width:930px;
+    }
+
+    .hero-cta{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:22px;
+    }
+
+    .section{
+      padding:26px;
+      margin-bottom:18px;
+    }
+
+    .section-title{
+      margin:0 0 16px;
+      color:var(--gold);
+      font-size:clamp(22px,2.4vw,34px);
+      font-weight:800;
+      letter-spacing:-.03em;
+    }
+
+    .section-sub{
+      margin:-4px 0 18px;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+
+    .info-card{
+      background:var(--panel2);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;
+      padding:16px 16px 14px;
+      min-height:auto;
+    }
+
+    .info-card h4{
+      margin:0 0 8px;
+      font-size:14px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .info-card p{
+      margin:0;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+
+    .list-card{
+      background:var(--panel2);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:22px;
+      padding:18px;
+    }
+
+    .clean-list{
+      list-style:none;
+      margin:0;
+      padding:0;
+    }
+
+    .clean-list li{
+      position:relative;
+      padding-left:22px;
+      margin-bottom:10px;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.8;
+    }
+
+    .clean-list li:last-child{
+      margin-bottom:0;
+    }
+
+    .clean-list li::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:11px;
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      box-shadow:0 0 0 4px rgba(216,183,104,.10);
+    }
+
+    .day-card{
+      background:rgba(255,255,255,.045);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:24px;
+      padding:20px;
+      margin-bottom:16px;
+    }
+
+    .day-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+
+    .day-head-left h3{
+      margin:0;
+      font-size:clamp(22px,2.6vw,32px);
+      font-weight:800;
+      letter-spacing:-.03em;
+      color:#fff;
+    }
+
+    .day-route{
+      margin-top:8px;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.7;
+    }
+
+    .day-date{
+      color:var(--gold);
+      font-size:20px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .mini-grid{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+      margin-bottom:14px;
+    }
+
+    .mini-card{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px;
+      min-height:auto;
+    }
+
+    .mini-card h5{
+      margin:0 0 8px;
+      font-size:14px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .mini-card p{
+      margin:0;
+      color:var(--muted);
+      font-size:15px;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+
+    .activity-box{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;
+      padding:16px;
+    }
+
+    .activity-box h5{
+      margin:0 0 12px;
+      font-size:16px;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .note-box{
+      margin-top:14px;
+      background:linear-gradient(180deg, rgba(216,183,104,.10), rgba(216,183,104,.05));
+      border:1px solid rgba(216,183,104,.16);
+      border-radius:18px;
+      padding:14px 16px;
+      color:#F5E4B6;
+      font-size:15px;
+      line-height:1.75;
+    }
+
+    .cta{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:22px;
+    }
+
+    .muted-note{
+      margin-top:10px;
+      color:rgba(255,255,255,.56);
+      font-size:13px;
+    }
+
+    @media (max-width: 980px){
+      .grid-2,
+      .grid-3,
+      .mini-grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media (max-width: 640px){
+      .wrap{
+        width:min(96%,96%);
+        margin:16px auto 40px;
+      }
+
+      .topbar,
+      .hero,
+      .section{
+        padding:18px;
+      }
+
+      .actions,
+      .hero-cta{
+        width:100%;
+      }
+
+      .actions .btn,
+      .hero-cta .btn{
+        width:100%;
+      }
+
+      .brand-logo{
+        width:58px;
+        height:58px;
+      }
+
+      .brand-copy h1{
+        font-size:22px;
+      }
+
+      .brand-copy p{
+        font-size:15px;
+      }
+    }
+
+    @media print{
+      body{
+        background:#fff !important;
+        color:#000 !important;
+      }
+      .actions,
+      .hero-cta,
+      .cta,
+      .muted-note{
+        display:none !important;
+      }
+      .glass,
+      .info-card,
+      .mini-card,
+      .list-card,
+      .activity-box,
+      .day-card{
+        background:#fff !important;
+        color:#000 !important;
+        box-shadow:none !important;
+        border:1px solid #ddd !important;
+        backdrop-filter:none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar glass">
+      <div class="brand">
+        <div class="brand-logo">
+          <img src="media/logo.png" alt="HKE Logo" onerror="this.style.display='none'">
+        </div>
+        <div class="brand-copy">
+          <h1>Himalayan Kerala Expeditions</h1>
+          <p>We Plan. We Care.</p>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a href="ai-planner.html" class="btn btn-secondary">Back to Planner</a>
+        <a href="booking-details.html" class="btn btn-primary">Book Now</a>
+        <button class="btn btn-secondary" onclick="window.print()">Print Itinerary</button>
+      </div>
+    </div>
+
+    <section class="hero glass">
+      <h2 class="hero-title" id="tripTitle">Generated Itinerary</h2>
+      <p class="hero-summary" id="tripSummary">Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences.</p>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="booking-details.html">Book Now</a>
+        <a class="btn btn-secondary" href="https://wa.me/919797294747" target="_blank">Talk to Customer Care</a>
+      </div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Trip Overview</h3>
+      <div class="grid-2" id="metaGrid"></div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Highlights</h3>
+      <div class="list-card">
+        <ul class="clean-list" id="highlightsList"></ul>
+      </div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Trip Preferences</h3>
+      <div class="grid-2" id="extraGrid"></div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Day-wise Itinerary</h3>
+      <p class="section-sub">Prepared with practical pacing, travel comfort, sightseeing flow, and destination suitability in mind.</p>
+      <div id="daysWrap"></div>
+    </section>
+
+    <section class="section glass">
+      <div class="grid-3">
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Inclusions</h3>
+          <ul class="clean-list" id="inclusionsList"></ul>
+        </div>
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Exclusions</h3>
+          <ul class="clean-list" id="exclusionsList"></ul>
+        </div>
+        <div class="list-card">
+          <h3 class="section-title" style="font-size:26px;">Terms</h3>
+          <ul class="clean-list" id="termsList"></ul>
+        </div>
+      </div>
+
+      <div class="cta">
+        <a class="btn btn-primary" href="booking-details.html">Book Now</a>
+        <a class="btn btn-secondary" href="https://wa.me/919797294747" target="_blank">Talk to Customer Care</a>
+      </div>
+
+      <div class="muted-note">
+        This itinerary is professionally prepared for planning purposes and may be refined during final booking confirmation.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const itinerary = JSON.parse(sessionStorage.getItem("hke_itinerary_data") || "{}");
+
+    function safe(v, fallback = "") {
+      if (v === null || v === undefined || v === "") return fallback;
+      return String(v);
+    }
+
+    function addList(id, items, fallbackText = "No details available.") {
+      const el = document.getElementById(id);
+      el.innerHTML = "";
+      if (!items || !items.length) {
+        el.innerHTML = `<li>${fallbackText}</li>`;
+        return;
+      }
+      items.forEach(item => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        el.appendChild(li);
+      });
+    }
+
+    function addInfoGrid(id, obj, labels) {
+      const wrap = document.getElementById(id);
+      wrap.innerHTML = "";
+      labels.forEach(([key, label]) => {
+        const div = document.createElement("div");
+        div.className = "info-card";
+        div.innerHTML = `
+          <h4>${label}</h4>
+          <p>${safe(obj?.[key], "—")}</p>
+        `;
+        wrap.appendChild(div);
+      });
+    }
+
+    function renderDays(days) {
+      const wrap = document.getElementById("daysWrap");
+      wrap.innerHTML = "";
+
+      if (!days || !days.length) {
+        wrap.innerHTML = `<div class="list-card"><p style="margin:0;color:rgba(255,255,255,.74)">No day-wise itinerary available.</p></div>`;
+        return;
+      }
+
+      days.forEach(day => {
+        const activities = (day.activities || [])
+          .map(a => `<li>${a}</li>`)
+          .join("");
+
+        const div = document.createElement("div");
+        div.className = "day-card";
+        div.innerHTML = `
+          <div class="day-head">
+            <div class="day-head-left">
+              <h3>Day ${safe(day.day)} - ${safe(day.title)}</h3>
+              <div class="day-route">${safe(day.route)}</div>
+            </div>
+            <div class="day-date">${safe(day.date)}</div>
+          </div>
+
+          <div class="mini-grid">
+            <div class="mini-card">
+              <h5>Route</h5>
+              <p>${safe(day.route, "As per itinerary")}</p>
+            </div>
+            <div class="mini-card">
+              <h5>Hotel</h5>
+              <p>${safe(day.hotel, "As per selected hotel category")}</p>
+            </div>
+            <div class="mini-card">
+              <h5>Meals</h5>
+              <p>${safe(day.meals, "As per package")}</p>
+            </div>
+          </div>
+
+          <div class="activity-box">
+            <h5>Activities</h5>
+            <ul class="clean-list">${activities || "<li>No activities listed.</li>"}</ul>
+          </div>
+
+          <div class="note-box">${safe(day.notes, "Sightseeing sequence may change slightly depending on local conditions and guest comfort.")}</div>
+        `;
+        wrap.appendChild(div);
+      });
+    }
+
+    document.getElementById("tripTitle").textContent =
+      safe(itinerary.title, "Generated Itinerary");
+
+    document.getElementById("tripSummary").textContent =
+      safe(
+        itinerary.summary,
+        "Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences."
+      );
+
+    addInfoGrid("metaGrid", itinerary.meta || {}, [
+      ["destination", "Destination"],
+      ["route", "Route"],
+      ["dates", "Dates"],
+      ["travellers", "Travellers"],
+      ["rooms", "Rooms"],
+      ["tripStyle", "Trip Style"]
+    ]);
+
+    addInfoGrid("extraGrid", itinerary.extraInfo || {}, [
+      ["budget", "Budget"],
+      ["travelType", "Travel Type"],
+      ["hotel", "Hotel Category"],
+      ["vehicle", "Vehicle"],
+      ["guide", "Guide"],
+      ["food", "Food"],
+      ["style", "Travel Style"],
+      ["notes", "Special Notes"]
+    ]);
+
+    addList("highlightsList", itinerary.highlights || [], "Highlights will appear here.");
+    addList("inclusionsList", itinerary.inclusions || [], "Inclusions will appear here.");
+    addList("exclusionsList", itinerary.exclusions || [], "Exclusions will appear here.");
+    addList("termsList", itinerary.terms || [], "Terms will appear here.");
+    renderDays(itinerary.days || []);
+  </script>
+</body>
+</html>

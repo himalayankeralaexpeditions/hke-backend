@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Plan with AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --gold3:#f6e4b3;
+      --text:#EAEFF7;
+      --muted: rgba(234,239,247,.72);
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.12);
+      --shadow: 0 18px 55px rgba(0,0,0,.45);
+      --radius: 18px;
+    }
+
+    body{
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+      overflow-x:hidden;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.82), rgba(0,0,0,.38)),
+        url("media/hero-banner.jpg") center/cover no-repeat fixed;
+      position: relative;
+    }
+
+    body::before{
+      content:"";
+      position: fixed;
+      inset: 0;
+      pointer-events:none;
+      background:
+        radial-gradient(900px 520px at 18% 18%, rgba(217,178,95,.20), transparent 60%),
+        radial-gradient(900px 520px at 85% 20%, rgba(240,208,138,.12), transparent 58%),
+        radial-gradient(900px 520px at 50% 92%, rgba(255,255,255,.05), transparent 60%),
+        linear-gradient(to bottom, rgba(0,0,0,.44), rgba(0,0,0,.76));
+      z-index: 0;
+    }
+
+    .topbar{
+      position: sticky;
+      top:0;
+      z-index: 10;
+      padding: 14px 0;
+      backdrop-filter: blur(14px);
+      background: rgba(10,12,16,.58);
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+    }
+
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .brand img{
+      height:46px;
+      background:#fff;
+      padding:6px;
+      border-radius:14px;
+      box-shadow:0 0 14px rgba(217,178,95,.35);
+    }
+    .brand .t1{ font-weight:700; line-height:1.15; margin:0; }
+    .brand .t2{ font-weight:500; font-size:.95rem; margin:0; color: rgba(240,208,138,.85); }
+
+    .btn-gold{
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      border:none;
+      color:#0b0f18;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-weight:700;
+      text-decoration:none;
+      box-shadow: 0 18px 35px rgba(217,178,95,.18);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      transition: transform .15s ease, filter .15s ease;
+    }
+    .btn-gold:hover{ transform: translateY(-1px); filter: brightness(1.02); }
+
+    .btn-ghost{
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.16);
+      color: var(--text);
+      font-weight:600;
+      border-radius: 999px;
+      padding: 10px 16px;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      transition: transform .15s ease, background .15s ease;
+    }
+    .btn-ghost:hover{ transform: translateY(-1px); background: rgba(255,255,255,.10); }
+
+    .wrap{
+      position: relative;
+      z-index: 2;
+      padding: 30px 12px 46px;
+    }
+
+    .panel{
+      max-width: 1140px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      padding: 24px;
+    }
+
+    .head-block{
+      display:flex;
+      justify-content:space-between;
+      gap:18px;
+      flex-wrap:wrap;
+      align-items:flex-end;
+    }
+
+    h1{
+      font-weight:800;
+      font-size: 2rem;
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+
+    .subline{
+      margin-top: 8px;
+      color: var(--muted);
+      font-weight:500;
+      max-width: 760px;
+      line-height: 1.75;
+    }
+
+    .hero-mini{
+      margin-top: 14px;
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 14px;
+      border-radius:999px;
+      background: rgba(217,178,95,.10);
+      border: 1px solid rgba(217,178,95,.18);
+      color: var(--gold3);
+      font-size:.92rem;
+      font-weight:700;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+    @media (max-width: 992px){ .grid{ grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 576px){ .grid{ grid-template-columns: 1fr; } }
+
+    label{
+      font-weight:650;
+      margin-bottom:7px;
+      display:block;
+      color: rgba(234,239,247,.95);
+    }
+
+    input, select, textarea{
+      width:100%;
+      padding: 12px 12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.30);
+      border: 1px solid rgba(255,255,255,.14);
+      color: var(--text);
+      outline:none;
+      font-weight:500;
+      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(217,178,95,.36);
+      box-shadow: 0 0 0 3px rgba(217,178,95,.10);
+      background: rgba(0,0,0,.34);
+    }
+
+    input::placeholder, textarea::placeholder{ color: rgba(234,239,247,.55); }
+    select option{ color:#111; }
+
+    .field-card{
+      background: var(--panel2);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    #placesBtn{
+      width: 100%;
+      text-align: left;
+      background: rgba(0,0,0,.28);
+      border: 1px solid rgba(217,178,95,.30);
+      color: var(--text);
+      padding: 12px 12px;
+      border-radius: 14px;
+      font-weight:600;
+    }
+
+    .chips{ margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }
+    .chip{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(217,178,95,.10);
+      border: 1px solid rgba(217,178,95,.20);
+      font-weight:600;
+    }
+    .chip button{
+      border:none; background:transparent; color: var(--text);
+      font-weight:800; cursor:pointer; padding:0; line-height:1;
+    }
+
+    .style-options{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top: 4px;
+    }
+    .style-option{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      font-weight:600;
+    }
+    .style-option input{
+      width:auto;
+      margin:0;
+      accent-color:#D9B25F;
+    }
+
+    .msg{ margin-top: 12px; font-weight:650; }
+    .msg.ok{ color:#b9ffcd; }
+    .msg.err{ color:#ffd1d1; }
+
+    .output{
+      margin-top: 16px;
+      background: rgba(0,0,0,.30);
+      border: 1px solid rgba(217,178,95,.18);
+      border-radius: 20px;
+      padding: 16px;
+      display:none;
+    }
+
+    .result-note{
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.10);
+      color: rgba(234,239,247,.84);
+      font-weight:500;
+      line-height:1.7;
+    }
+
+    .itMeta{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:12px;
+      color: var(--muted);
+      font-weight:500;
+      font-size: .95rem;
+    }
+    .itMeta span{
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+
+    .dayCards{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .dayCard{
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 16px;
+      padding: 14px 14px;
+    }
+
+    .dayTitle{
+      display:flex;
+      justify-content:space-between;
+      gap: 10px;
+      flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+    .dayTitle .left{
+      font-weight:700;
+      color: rgba(234,239,247,.96);
+    }
+    .dayTitle .right{
+      color: rgba(240,208,138,.85);
+      font-weight:600;
+      font-size: .95rem;
+    }
+
+    .dayList{
+      margin: 0;
+      padding-left: 18px;
+      color: rgba(234,239,247,.88);
+      font-weight:500;
+      line-height: 1.8;
+    }
+    .dayList li{ margin: 4px 0; }
+
+    #postActions{
+      display:none;
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.10);
+    }
+    .actionsTitle{
+      font-weight:800;
+      margin-bottom: 10px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color: var(--gold3);
+    }
+    .actionsGrid{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 900px){
+      .actionsGrid{ grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px){
+      .actionsGrid{ grid-template-columns: 1fr; }
+    }
+    .btn-wide{
+      width:100%;
+      justify-content:center;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-weight:750;
+    }
+
+    .modal-content{
+      background: rgba(10,12,16,.96);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      backdrop-filter: blur(14px);
+    }
+
+    .placeRow{
+      display:flex; align-items:center; gap:10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      margin-bottom: 8px;
+      cursor:pointer;
+      user-select:none;
+      font-weight:500;
+    }
+    .placeRow:hover{
+      border-color: rgba(217,178,95,.30);
+      background: rgba(217,178,95,.10);
+    }
+
+    .placeRow input[type="checkbox"]{
+      width: 18px;
+      height: 18px;
+      accent-color: #D9B25F;
+    }
+    .placeRow .place-name{
+      margin-left:auto;
+      font-weight:700;
+      opacity:.95;
+    }
+
+    .loading-overlay{
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(3,7,12,.74);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .loading-card{
+      width: min(460px, 92vw);
+      text-align: center;
+      padding: 28px 24px;
+      border-radius: 24px;
+      background: rgba(8, 13, 22, 0.94);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    }
+
+    .loading-card h3{
+      margin: 18px 0 10px;
+      color: #F0D08A;
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+
+    .loading-card p{
+      margin: 0;
+      color: rgba(234,239,247,.78);
+      line-height: 1.7;
+      font-size: .98rem;
+    }
+
+    .travel-loader{
+      position: relative;
+      width: 92px;
+      height: 92px;
+      margin: 0 auto;
+    }
+
+    .loader-ring{
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      border: 4px solid rgba(217,178,95,.18);
+      border-top: 4px solid #D9B25F;
+      border-right: 4px solid #F0D08A;
+      animation: hkeSpin 1.1s linear infinite;
+      box-shadow: 0 0 24px rgba(217,178,95,.18);
+    }
+
+    .loader-icon{
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      color: #F0D08A;
+      animation: hkeFloat 1.6s ease-in-out infinite;
+    }
+
+    @keyframes hkeSpin{
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes hkeFloat{
+      0%,100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="container d-flex justify-content-between align-items-center">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" />
+        <div>
+          <p class="t1">Himalayan Kerala Expeditions</p>
+          <p class="t2">We Plan. We Care.</p>
+        </div>
+      </div>
+      <a href="index.html" class="btn-ghost">← Back</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="panel">
+      <div class="head-block">
+        <div>
+          <h1>AI Journey Planner</h1>
+          <div class="subline">
+            Create your personalised journey and move ahead to itinerary review, refinement, and booking.
+          </div>
+          <div class="hero-mini">Luxury route planning • curated experiences • premium travel feel</div>
+        </div>
+      </div>
+
+      <form id="plannerForm" class="mt-3" novalidate>
+        <div class="grid">
+          <div class="field-card">
+            <label>Name *</label>
+            <input id="name" name="name" type="text" placeholder="Full name" required />
+          </div>
+
+          <div class="field-card">
+            <label>Email *</label>
+            <input id="email" name="email" type="email" placeholder="you@example.com" required />
+          </div>
+
+          <div class="field-card">
+            <label>Mobile *</label>
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              inputmode="numeric"
+              autocomplete="tel"
+              placeholder="10-digit number"
+              maxlength="10"
+              pattern="[0-9]{10}"
+              required
+            />
+          </div>
+
+          <div class="field-card">
+            <label>From where are you travelling? *</label>
+            <input id="fromLocation" name="fromLocation" type="text" placeholder="Delhi / Kochi / Chandigarh" required />
+          </div>
+
+          <div class="field-card">
+            <label>Destination *</label>
+            <select id="destination" name="destination" required>
+              <option value="">— Select —</option>
+              <option value="Himachal Pradesh">Himachal Pradesh</option>
+              <option value="Uttarakhand">Uttarakhand</option>
+              <option value="Kashmir">Kashmir</option>
+              <option value="Ladakh">Ladakh</option>
+              <option value="Kerala">Kerala</option>
+              <option value="Goa">Goa</option>
+              <option value="Rajasthan">Rajasthan</option>
+              <option value="Northeast India">Northeast India</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Trip End Point *</label>
+            <input id="endPoint" name="endPoint" type="text" placeholder="Chandigarh / Kochi / Jammu" required />
+          </div>
+
+          <div class="field-card">
+            <label>Start Date</label>
+            <input id="startDate" name="startDate" type="date" />
+          </div>
+
+          <div class="field-card">
+            <label>Days *</label>
+            <input id="days" name="days" type="number" min="2" value="5" required />
+          </div>
+
+          <div class="field-card">
+            <label>End Date (auto)</label>
+            <input id="endDate" name="endDate" type="date" readonly />
+          </div>
+
+          <div class="field-card">
+            <label>Travellers</label>
+            <input id="travellers" name="travellers" type="number" min="1" value="2" />
+          </div>
+
+          <div class="field-card">
+            <label>Rooms</label>
+            <input id="rooms" name="rooms" type="number" min="1" value="1" />
+          </div>
+
+          <div class="field-card">
+            <label>Budget Category</label>
+            <select id="budget" name="budget">
+              <option value="Economy">Economy</option>
+              <option value="Standard" selected>Standard</option>
+              <option value="Premium">Premium</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Travel Type</label>
+            <select id="travelType" name="travelType">
+              <option value="Family">Family</option>
+              <option value="Couple">Couple</option>
+              <option value="Friends">Friends</option>
+              <option value="Solo">Solo</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Hotel Category</label>
+            <select id="hotelClass" name="hotelClass">
+              <option value="No Hotel">No Hotel</option>
+              <option value="Economy">Economy</option>
+              <option value="Standard" selected>Standard</option>
+              <option value="Premium">Premium</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Vehicle</label>
+            <select id="vehicle" name="vehicle">
+              <option value="No Vehicle">No Vehicle</option>
+              <option value="Swift">Swift</option>
+              <option value="Ertiga" selected>Ertiga</option>
+              <option value="Crysta">Crysta</option>
+              <option value="Traveller">Traveller</option>
+              <option value="Urbania">Urbania</option>
+              <option value="Royal Enfield Himalayan">Royal Enfield Himalayan</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Guide</label>
+            <select id="guide" name="guide">
+              <option value="Without Guide" selected>Without Guide</option>
+              <option value="With Guide">With Guide</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Food</label>
+            <select id="needFood" name="needFood">
+              <option value="false">No</option>
+              <option value="true" selected>Yes</option>
+            </select>
+          </div>
+
+          <div class="field-card">
+            <label>Food Preference</label>
+            <select id="foodPreference" name="foodPreference">
+              <option value="">Flexible</option>
+              <option value="Veg">Veg</option>
+              <option value="Non-Veg">Non-Veg</option>
+              <option value="Both">Both</option>
+              <option value="Jain">Jain</option>
+            </select>
+          </div>
+
+          <div class="field-card" style="grid-column:1/-1;">
+            <label>Travel Style</label>
+            <div class="style-options">
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Adventure"> Adventure</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Peaceful"> Peaceful</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Spiritual"> Spiritual</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Luxury"> Luxury</label>
+            </div>
+          </div>
+
+          <div class="field-card" style="grid-column:1/-1;">
+            <label>Important Tourist Places (select at least 1) *</label>
+            <button type="button" id="placesBtn">Select places (click to choose)…</button>
+            <input type="hidden" id="placesValue" value="" />
+            <div id="chips" class="chips"></div>
+            <div id="placesErr" class="msg err" style="display:none;">Please select at least one place.</div>
+          </div>
+
+          <div class="field-card" style="grid-column:1/-1;">
+            <label>Special Requests / Notes</label>
+            <textarea id="notes" name="notes" rows="2" placeholder="Senior citizen, honeymoon, pure veg, avoid long drives..."></textarea>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+          <button id="generateBtn" type="submit" class="btn-gold">Generate Itinerary</button>
+          <button id="resetBtn" type="button" class="btn-ghost">Reset</button>
+        </div>
+
+        <div id="msg" class="msg"></div>
+
+        <div id="output" class="output">
+          <div class="result-note">
+            Your itinerary has been prepared. Final package price will be shown during booking according to the selected travel details.
+          </div>
+          <div id="itMeta" class="itMeta"></div>
+          <div id="extraInfo" class="itMeta"></div>
+          <div id="itCards" class="dayCards"></div>
+        </div>
+
+        <div id="postActions">
+          <div class="actionsTitle">Continue your journey</div>
+          <div class="actionsGrid">
+            <a id="bookNowBtn" href="#" class="btn-gold btn-wide">✅ Book This Plan</a>
+            <a id="quoteBtn" href="#" class="btn-ghost btn-wide">📩 Request Final Quote</a>
+            <a id="chatUsBtn" href="#" target="_blank" class="btn-ghost btn-wide">💬 WhatsApp</a>
+            <a id="callAgentBtn" href="tel:+919797294747" class="btn-ghost btn-wide">📞 Talk to Customer Care</a>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="placesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header" style="border-color:rgba(255,255,255,.12);">
+          <h5 class="modal-title" style="font-weight:700;">Select Tourist Places</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex gap-2">
+            <input id="placesSearch" type="text" class="form-control" placeholder="Search places..." />
+            <button id="placesClearBtn" type="button" class="btn-ghost">Clear</button>
+          </div>
+          <div id="placesHint" class="mt-2" style="font-weight:600; opacity:.85;">
+            Select destination first to load places.
+          </div>
+          <div id="placesList" class="mt-3"></div>
+        </div>
+        <div class="modal-footer" style="border-color:rgba(255,255,255,.12);">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Close</button>
+          <button id="placesDoneBtn" type="button" class="btn-gold" data-bs-dismiss="modal">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+    <div class="loading-card">
+      <div class="travel-loader">
+        <div class="loader-ring"></div>
+        <div class="loader-icon">✈</div>
+      </div>
+      <h3>Preparing your itinerary</h3>
+      <p>
+        We are shaping your journey with route flow, destination highlights, and a refined travel experience.
+      </p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="scripts/ai-planner.js?v=20260407_royal_vehicle_update"></script>
+</body>
+</html>

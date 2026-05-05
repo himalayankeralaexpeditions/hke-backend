@@ -2,662 +2,335 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>My Trips | Himalayan Kerala Expeditions</title>
+  <title>My Booking | HKE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/hke-polish.css" />
   <style>
-    :root{
-      --bg0:#070A10;
-      --bg1:#0B0F18;
-      --panel:rgba(255,255,255,.06);
-      --panel2:rgba(255,255,255,.04);
-      --border:rgba(255,255,255,.12);
-      --text:#EAEFF7;
-      --muted:rgba(234,239,247,.72);
-      --gold:#D9B25F;
-      --gold2:#F0D08A;
-      --green:#35d07f;
-      --shadow:0 18px 55px rgba(0,0,0,.45);
+    :root {
+      --gold: #d9b25f;
+      --gold-soft: #f0d08a;
+      --panel: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #eaf0f8;
+      --muted: rgba(234, 240, 248, 0.72);
+      --shadow: 0 24px 58px rgba(0, 0, 0, 0.42);
+      --green: #c7ffd7;
+      --amber: #ffe4a8;
     }
-
-    *{box-sizing:border-box}
-
-    body{
-      margin:0;
-      font-family:'Inter',system-ui,sans-serif;
-      color:var(--text);
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", system-ui, sans-serif;
+      color: var(--text);
       background:
-        radial-gradient(900px 520px at 15% 10%, rgba(217,178,95,.10), transparent 60%),
-        linear-gradient(180deg,var(--bg0),var(--bg1));
+        linear-gradient(180deg, #060b11, #0c1520 54%, #0a111a),
+        radial-gradient(760px 440px at 16% 10%, rgba(217, 178, 95, 0.12), transparent 60%);
     }
-
-    .container{
-      width:min(1120px,92%);
-      margin:0 auto;
-      padding:28px 0 48px;
+    .wrap {
+      width: min(1160px, 94%);
+      margin: 0 auto;
+      padding: 30px 0 50px;
     }
-
-    .top{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:14px;
-      flex-wrap:wrap;
-      margin-bottom:22px;
+    .hero,
+    .panel {
+      border-radius: 26px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
     }
-
-    h1{
-      margin:0 0 8px;
-      font-size:2rem;
-      font-weight:800;
-      color:var(--gold2);
+    .hero {
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(217, 178, 95, 0.10), rgba(255, 255, 255, 0.03)),
+        rgba(255, 255, 255, 0.04);
     }
-
-    .sub{
-      color:var(--muted);
-      line-height:1.7;
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
     }
-
-    .top-actions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.8;
+      max-width: 820px;
     }
-
-    .top a,
-    .top button{
-      text-decoration:none;
-      color:var(--text);
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      border-radius:999px;
-      padding:10px 14px;
-      font-weight:700;
-      cursor:pointer;
-      font-family:inherit;
-      font-size:.95rem;
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 18px;
     }
-
-    .stack{
-      display:grid;
-      gap:16px;
+    .btn-gold,
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 800;
+      text-decoration: none;
     }
-
-    .card{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:22px;
-      padding:20px;
-      box-shadow:var(--shadow);
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold), var(--gold-soft));
+      color: #091019;
     }
-
-    .trip-card{
-      background:rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:18px;
-      padding:16px;
-      margin-top:12px;
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.12);
     }
-
-    .grid{
-      display:grid;
-      grid-template-columns:1.2fr .8fr;
-      gap:16px;
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 18px 0;
     }
-
-    .title{
-      font-size:1.1rem;
-      font-weight:800;
-      margin-bottom:10px;
-      color:var(--gold2);
+    .stat,
+    .booking-card {
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 18px;
     }
-
-    .section-title-row{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:12px;
+    .stat .label {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 8px;
     }
-
-    .chip-soft{
-      display:inline-flex;
-      align-items:center;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.06);
-      color:var(--muted);
-      font-weight:700;
-      font-size:.9rem;
+    .stat .value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--gold-soft);
     }
-
-    .kv{
-      display:grid;
-      grid-template-columns:180px 1fr;
-      gap:8px 14px;
-      margin-bottom:8px;
+    .panel { padding: 22px; }
+    .status-box,
+    .empty {
+      border-radius: 18px;
+      padding: 16px;
+      line-height: 1.7;
     }
-
-    .k{
-      color:var(--muted);
-      font-weight:600;
+    .status-box {
+      margin-bottom: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      color: var(--muted);
     }
-
-    .v{
-      font-weight:700;
-      word-break:break-word;
+    .empty {
+      text-align: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
     }
-
-    .badge{
-      display:inline-flex;
-      padding:7px 12px;
-      border-radius:999px;
-      font-size:.88rem;
-      font-weight:800;
-      margin-right:8px;
-      margin-bottom:8px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.07);
+    .stack { display: grid; gap: 16px; }
+    .booking-card h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--gold-soft);
     }
-
-    .badge-green{
-      color:#baf8d4;
-      border-color:rgba(53,208,127,.24);
-      background:rgba(53,208,127,.12);
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
     }
-
-    .badge-gold{
-      color:#ffeab0;
-      border-color:rgba(217,178,95,.24);
-      background:rgba(217,178,95,.12);
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 0.88rem;
     }
-
-    .warn{
-      margin-top:12px;
-      padding:12px 14px;
-      border-radius:14px;
-      background:rgba(217,178,95,.10);
-      border:1px solid rgba(217,178,95,.18);
-      color:#ffe8b2;
-      font-weight:700;
-      line-height:1.6;
+    .badge.green {
+      color: var(--green);
+      background: rgba(113, 255, 165, 0.10);
+      border: 1px solid rgba(113, 255, 165, 0.20);
     }
-
-    .actions{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      margin-top:14px;
+    .badge.amber {
+      color: var(--amber);
+      background: rgba(217, 178, 95, 0.12);
+      border: 1px solid rgba(217, 178, 95, 0.22);
     }
-
-    .btn{
-      border:none;
-      cursor:pointer;
-      padding:12px 16px;
-      border-radius:14px;
-      font-weight:800;
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      font-family:inherit;
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
     }
-
-    .btn-primary{
-      background:linear-gradient(135deg,var(--gold),var(--gold2));
-      color:#0b0f18;
+    .detail {
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.18);
+      padding: 14px;
     }
-
-    .btn-ghost{
-      background:rgba(255,255,255,.08);
-      color:var(--text);
-      border:1px solid var(--border);
+    .detail .label {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 6px;
     }
-
-    .empty{
-      background:rgba(255,255,255,.05);
-      border:1px solid var(--border);
-      border-radius:18px;
-      padding:22px;
-      color:var(--muted);
-      font-weight:600;
-      line-height:1.7;
+    .detail .value {
+      font-weight: 800;
+      line-height: 1.55;
     }
-
-    .change-box{
-      margin-top:14px;
-      background:var(--panel2);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:16px;
-      padding:14px;
-      display:none;
+    .booking-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
     }
-
-    .change-box textarea{
-      width:100%;
-      min-height:120px;
-      resize:vertical;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.07);
-      color:#fff;
-      padding:12px 14px;
-      font-family:inherit;
-      font-size:.96rem;
-      outline:none;
+    .sub-card {
+      margin-top: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.18);
+      padding: 16px;
     }
-
-    .change-actions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:12px;
+    .sub-card h3 {
+      margin: 0 0 10px;
+      color: var(--gold-soft);
+      font-size: 1rem;
+      font-weight: 800;
     }
-
-    .small-note{
-      color:var(--muted);
-      font-size:.92rem;
-      line-height:1.7;
-      margin-top:10px;
+    .sub-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.8;
     }
-
-    .success-msg{
-      margin-top:12px;
-      color:#baf8d4;
-      font-weight:700;
-      line-height:1.7;
+    .map-frame {
+      width: 100%;
+      min-height: 280px;
+      border: 0;
+      border-radius: 16px;
+      margin-top: 12px;
+      background: rgba(255,255,255,.05);
     }
-
-    .error-msg{
-      margin-top:12px;
-      color:#ffd0d0;
-      font-weight:700;
-      line-height:1.7;
+    .route-map-shell {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
     }
-
-    .request-history{
-      margin-top:12px;
-      padding-top:10px;
-      border-top:1px solid rgba(255,255,255,.08);
+    .route-map-canvas {
+      width: 100%;
+      min-height: 520px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.05);
+      overflow: hidden;
     }
-
-    .request-item{
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;
-      padding:12px;
-      margin-bottom:10px;
+    .route-map-toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
     }
-
-    @media (max-width:900px){
-      .grid{ grid-template-columns:1fr; }
-      .kv{ grid-template-columns:1fr; gap:4px; }
+    .route-map-toolbar select {
+      width: auto;
+      min-width: 170px;
+      padding: 11px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-weight: 700;
+    }
+    .route-map-legend {
+      display: grid;
+      gap: 10px;
+    }
+    .hke-route-legend-item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+    }
+    .hke-route-legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      margin-top: 6px;
+      flex: 0 0 auto;
+    }
+    .hke-route-legend-copy {
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .hke-route-legend-copy strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .hke-route-legend-waypoints {
+      color: rgba(234, 240, 248, 0.56);
+      font-size: 13px;
+    }
+    .route-map-message {
+      display: none;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .placeholder-btn {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 11px 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    @media (max-width: 920px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .detail-grid,
+      .stats { grid-template-columns: 1fr; }
+      .wrap { width: calc(100% - 18px); }
     }
   </style>
-
-<link rel="stylesheet" href="css/hke-polish.css">
-<script src="scripts/hke-auth-gate.js"></script>
+  <script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+  <script src="scripts/config.js"></script>
+  <script src="scripts/hke-route-map.js"></script>
 </head>
 <body>
-  <div class="container">
-    <div class="top">
-      <div>
-        <h1>My Trips</h1>
-        <div class="sub">View saved trip plans, bookings, payment status, and itinerary change requests from your production customer flow.</div>
+  <main class="wrap">
+    <section class="hero">
+      <h1>My HKE Bookings</h1>
+      <p>Review recent bookings, payment status, and remaining balance from the live MongoDB booking records linked to your verified phone number.</p>
+      <div class="hero-actions">
+        <a class="btn-gold" href="book.html" data-hke-requires-login="true">Create New Booking</a>
+        <a class="btn-ghost" href="index.html">Back to Home</a>
       </div>
-      <div class="top-actions">
-        <a href="login.html">Login Again</a>
-        <a href="index.html">Home</a>
-      </div>
-    </div>
-
-    <div id="ordersWrap" class="stack"></div>
-  </div>
-
-  <script>
-    (function(){
-      const API_BASE = "https://hke-backend.onrender.com";
-      const API_CUSTOMER_TRIPS = `${API_BASE}/api/customer/trips`;
-      const CUSTOMER_PROFILE_KEY = "HKE_CUSTOMER_PROFILE";
-      const ordersWrap = document.getElementById("ordersWrap");
-
-      function esc(s){
-        return String(s ?? "")
-          .replaceAll("&","&amp;")
-          .replaceAll("<","&lt;")
-          .replaceAll(">","&gt;")
-          .replaceAll('"',"&quot;")
-          .replaceAll("'","&#039;");
-      }
-
-      function normalizePhone(value){
-        let digits = String(value || "").replace(/\D/g, "");
-        if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
-        if (digits.length > 10) digits = digits.slice(-10);
-        return digits;
-      }
-
-      function rupeeFromPaise(p){
-        return "Rs " + (Number(p || 0) / 100).toLocaleString("en-IN");
-      }
-
-      function getStoredProfile(){
-        try {
-          return JSON.parse(localStorage.getItem(CUSTOMER_PROFILE_KEY) || "{}");
-        } catch {
-          return {};
-        }
-      }
-
-      async function getJSON(url){
-        const res = await fetch(url);
-        const txt = await res.text();
-        let data = null;
-        try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
-        if (!res.ok) throw new Error(data?.detail || data?.message || "Request failed");
-        return data;
-      }
-
-      async function postJSON(url, body){
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        const txt = await res.text();
-        let data = null;
-        try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
-        if (!res.ok) throw new Error(data?.detail || data?.message || "Request failed");
-        return data;
-      }
-
-      function openChangeBox(ref){
-        document.querySelectorAll(".change-box").forEach((box) => {
-          if (box.id !== "changeBox_" + ref) box.style.display = "none";
-        });
-
-        const box = document.getElementById("changeBox_" + ref);
-        if (box) box.style.display = box.style.display === "block" ? "none" : "block";
-      }
-
-      async function submitChangeRequest(ref){
-        const textarea = document.getElementById("changeText_" + ref);
-        const msg = document.getElementById("changeMsg_" + ref);
-        const bookingTitle = document.getElementById("bookingTitle_" + ref);
-        const bookingPhone = localStorage.getItem("HKE_ORDER_LOOKUP_VALUE") || "";
-        const customerName = document.getElementById("customerName_" + ref)?.textContent || "";
-        const destination = bookingTitle ? bookingTitle.textContent : "";
-
-        if (!textarea || !msg) return;
-
-        const requestText = (textarea.value || "").trim();
-        if (!requestText) {
-          msg.className = "error-msg";
-          msg.textContent = "Please write the requested itinerary change.";
-          return;
-        }
-
-        try {
-          msg.className = "success-msg";
-          msg.textContent = "Submitting request...";
-
-          await postJSON(API_BASE + "/api/request-itinerary-change", {
-            booking_ref: ref,
-            customer_phone: bookingPhone,
-            customer_name: customerName,
-            destination: destination,
-            request_text: requestText
-          });
-
-          msg.className = "success-msg";
-          msg.textContent = "Your itinerary change request has been submitted successfully. Customer care will review it before confirmation.";
-          textarea.value = "";
-          await loadOrders();
-        } catch (err) {
-          msg.className = "error-msg";
-          msg.textContent = err.message || "Unable to submit itinerary change request.";
-        }
-      }
-
-      function payRemaining(ref){
-        localStorage.setItem("HKE_SELECTED_BOOKING_REF", ref || "");
-        alert("Next step: connect this button to remaining balance payment flow for booking " + ref);
-      }
-
-      async function fetchRequests(phone){
-        if (!phone) return [];
-        try {
-          const data = await getJSON(`${API_BASE}/api/itinerary-change-requests?phone=${encodeURIComponent(phone)}`);
-          return Array.isArray(data.items) ? data.items : [];
-        } catch {
-          return [];
-        }
-      }
-
-      async function fetchCustomerTrips(phone){
-        if (!phone) return { supported: false };
-        try {
-          const data = await getJSON(`${API_CUSTOMER_TRIPS}?phone=${encodeURIComponent(phone)}`);
-          return {
-            supported: true,
-            items: Array.isArray(data.items) ? data.items : []
-          };
-        } catch (err) {
-          return {
-            supported: false,
-            message: err.message || "Saved trips API is not available right now."
-          };
-        }
-      }
-
-      function renderTripsSection(tripsData, phone){
-        if (!tripsData.supported) {
-          return `
-            <div class="card">
-              <div class="section-title-row">
-                <div class="title">Saved Trips</div>
-                <span class="chip-soft">${esc(phone || "No phone")}</span>
-              </div>
-              <div class="empty">
-                Saved AI itineraries are not available from the production API yet. Once the backend exposes customer trips, they will appear here automatically.
-              </div>
-            </div>
-          `;
-        }
-
-        if (!tripsData.items.length) {
-          return `
-            <div class="card">
-              <div class="section-title-row">
-                <div class="title">Saved Trips</div>
-                <span class="chip-soft">${esc(phone || "No phone")}</span>
-              </div>
-              <div class="empty">No saved AI itineraries were returned for this mobile number.</div>
-            </div>
-          `;
-        }
-
-        return `
-          <div class="card">
-            <div class="section-title-row">
-              <div class="title">Saved Trips</div>
-              <span class="chip-soft">${tripsData.items.length} itinerary${tripsData.items.length === 1 ? "" : "ies"}</span>
-            </div>
-            ${tripsData.items.map((item) => {
-              const destination = esc(item.destination || item.meta?.destination || "-");
-              const title = esc(item.title || item.latestItinerary?.title || item.originalItinerary?.title || destination);
-              const status = esc(item.status || "draft");
-              const updatedAt = esc(item.updatedAt || item.createdAt || "-");
-              const route = esc(item.latestItinerary?.meta?.route || item.route || "-");
-              const dates = esc(item.latestItinerary?.meta?.dates || [item.startDate, item.endDate].filter(Boolean).join(" to ") || "-");
-              return `
-                <div class="trip-card">
-                  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-                    <span class="badge badge-gold">${status}</span>
-                    <span class="badge">${updatedAt}</span>
-                  </div>
-                  <div class="kv"><div class="k">Trip</div><div class="v">${title}</div></div>
-                  <div class="kv"><div class="k">Destination</div><div class="v">${destination}</div></div>
-                  <div class="kv"><div class="k">Route</div><div class="v">${route}</div></div>
-                  <div class="kv"><div class="k">Dates</div><div class="v">${dates}</div></div>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        `;
-      }
-
-      function renderBookingsSection(orders, requests){
-        if (!orders.length) {
-          return `
-            <div class="card">
-              <div class="title">Bookings</div>
-              <div class="empty">No bookings or payment records were found for this mobile number yet.</div>
-            </div>
-          `;
-        }
-
-        return orders.map((order) => {
-          const bookingRef = esc(order.booking_ref || "");
-          const bookingStatus = esc(order.booking_status || "-");
-          const paymentStatus = esc(order.payment_status || "-");
-          const destination = esc(order.destination || "-");
-          const customerName = esc(order.customer_name || "-");
-          const phone = esc(order.phone || "-");
-          const travelDates = `${esc(order.start_date || "-")} to ${esc(order.end_date || "-")}`;
-          const fullDue = esc(order.full_payment_due_date || "-");
-          const cancelUntil = esc(order.cancellable_until || "-");
-          const remainingPaise = Number(order.remaining_amount_paise || 0);
-
-          const relatedRequests = requests.filter((r) => String(r.booking_ref || "") === String(order.booking_ref || ""));
-          const requestHtml = relatedRequests.length
-            ? `
-              <div class="request-history">
-                <div class="title" style="font-size:1rem;">Itinerary Change Requests</div>
-                ${relatedRequests.map((req) => `
-                  <div class="request-item">
-                    <div><span class="badge">${esc(req.status || "pending")}</span></div>
-                    <div class="small-note"><b>Request:</b> ${esc(req.request_text || "")}</div>
-                    <div class="small-note"><b>Admin Note:</b> ${esc(req.admin_note || "-")}</div>
-                  </div>
-                `).join("")}
-              </div>
-            `
-            : "";
-
-          return `
-            <div class="card">
-              <div class="grid">
-                <div>
-                  <div class="title">Booking Details</div>
-                  <div>
-                    <span class="badge badge-gold">${bookingStatus}</span>
-                    <span class="badge ${remainingPaise <= 0 ? "badge-green" : ""}">${paymentStatus}</span>
-                  </div>
-
-                  <div class="kv"><div class="k">Booking ID</div><div class="v">${bookingRef}</div></div>
-                  <div class="kv"><div class="k">Destination</div><div class="v" id="bookingTitle_${bookingRef}">${destination}</div></div>
-                  <div class="kv"><div class="k">Travel Dates</div><div class="v">${travelDates}</div></div>
-                  <div class="kv"><div class="k">Customer</div><div class="v" id="customerName_${bookingRef}">${customerName}</div></div>
-                  <div class="kv"><div class="k">Phone</div><div class="v">${phone}</div></div>
-
-                  <div class="warn">
-                    Full payment due before <b>${fullDue}</b>.
-                    Online cancellation available until <b>${cancelUntil}</b>.
-                  </div>
-
-                  ${requestHtml}
-
-                  <div class="change-box" id="changeBox_${bookingRef}">
-                    <div class="title" style="font-size:1rem; margin-bottom:10px;">Request Itinerary Change</div>
-                    <textarea id="changeText_${bookingRef}" placeholder="Example: Add one more day, change hotel to deluxe, remove one destination, need vegetarian meals only."></textarea>
-                    <div class="change-actions">
-                      <button class="btn btn-primary" type="button" onclick="submitChangeRequest('${bookingRef}')">Submit Request</button>
-                      <button class="btn btn-ghost" type="button" onclick="openChangeBox('${bookingRef}')">Close</button>
-                    </div>
-                    <div class="small-note">
-                      After booking, itinerary changes will be reviewed and confirmed by customer care before final approval.
-                    </div>
-                    <div id="changeMsg_${bookingRef}"></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div class="title">Payment Summary</div>
-                  <div class="kv"><div class="k">Total Amount</div><div class="v">${rupeeFromPaise(order.total_amount_paise)}</div></div>
-                  <div class="kv"><div class="k">Paid Amount</div><div class="v">${rupeeFromPaise(order.paid_amount_paise)}</div></div>
-                  <div class="kv"><div class="k">Remaining Amount</div><div class="v">${rupeeFromPaise(order.remaining_amount_paise)}</div></div>
-
-                  <div class="actions">
-                    <button class="btn btn-primary openOrderBtn" data-ref="${bookingRef}">Open Order</button>
-                    <button class="btn btn-ghost" type="button" onclick="openChangeBox('${bookingRef}')">Request Itinerary Change</button>
-                    <button class="btn btn-ghost" type="button" onclick="payRemaining('${bookingRef}')">Pay Remaining Balance</button>
-                    <a class="btn btn-ghost" target="_blank" href="https://wa.me/919797294747?text=${encodeURIComponent("Hello Himalayan Kerala Expeditions, I need support for booking ID " + (order.booking_ref || "") + ".")}">Talk to Customer Care</a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-        }).join("");
-      }
-
-      async function loadOrders(){
-        const profile = getStoredProfile();
-        const phone =
-          normalizePhone(profile.phone) ||
-          normalizePhone(localStorage.getItem("HKE_CUSTOMER_PHONE")) ||
-          normalizePhone(localStorage.getItem("HKE_OTP_VERIFIED_PHONE")) ||
-          normalizePhone(localStorage.getItem("HKE_ORDER_LOOKUP_VALUE")) ||
-          "";
-
-        if (!phone) {
-          ordersWrap.innerHTML = `<div class="empty">Login data not found. Please log in again.</div>`;
-          return;
-        }
-
-        localStorage.setItem("HKE_ORDER_LOOKUP_MODE", "phone");
-        localStorage.setItem("HKE_ORDER_LOOKUP_VALUE", phone);
-
-        const tripsData = await fetchCustomerTrips(phone);
-
-        try {
-          const data = await getJSON(`${API_BASE}/api/orders?phone=${encodeURIComponent(phone)}`);
-          const orders = Array.isArray(data.orders) ? data.orders : [];
-          const requests = await fetchRequests(phone);
-
-          ordersWrap.innerHTML = `
-            ${renderTripsSection(tripsData, phone)}
-            ${renderBookingsSection(orders, requests)}
-          `;
-
-          document.querySelectorAll(".openOrderBtn").forEach((btn) => {
-            btn.addEventListener("click", () => {
-              localStorage.setItem("HKE_SELECTED_BOOKING_REF", btn.getAttribute("data-ref") || "");
-              window.location.href = "order-details.html";
-            });
-          });
-
-          window.openChangeBox = openChangeBox;
-          window.submitChangeRequest = submitChangeRequest;
-          window.payRemaining = payRemaining;
-        } catch (err) {
-          ordersWrap.innerHTML = `
-            ${renderTripsSection(tripsData, phone)}
-            <div class="card">
-              <div class="title">Bookings</div>
-              <div class="empty">${esc(err.message || "Unable to load bookings.")}</div>
-            </div>
-          `;
-        }
-      }
-
-      loadOrders();
-    })();
-  </script>
-
-<script src="scripts/hke-polish.js"></script>
+    </section>
+    <section class="stats">
+      <div class="stat"><div class="label">Total Bookings</div><div class="value" id="statTotal">0</div></div>
+      <div class="stat"><div class="label">Confirmed</div><div class="value" id="statConfirmed">0</div></div>
+      <div class="stat"><div class="label">Paid</div><div class="value" id="statPaid">0</div></div>
+      <div class="stat"><div class="label">Balance Due</div><div class="value" id="statDue">Rs 0</div></div>
+    </section>
+    <section class="panel">
+      <div id="ordersStatus" class="status-box">Loading your bookings...</div>
+      <div id="ordersEmpty" class="empty" style="display:none;">No booking records were found for your verified phone number yet.</div>
+      <div id="ordersList" class="stack"></div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+  <script src="scripts/my-orders.js?v=20260504_booking_pdf"></script>
+  <script src="scripts/hke-polish.js"></script>
 </body>
 </html>

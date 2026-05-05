@@ -132,6 +132,18 @@
       max-width:930px;
     }
 
+    .hero-notice{
+      display:none;
+      margin-top:16px;
+      padding:14px 16px;
+      border-radius:16px;
+      border:1px solid rgba(255,209,209,.22);
+      background:rgba(255,209,209,.08);
+      color:#ffe0e0;
+      line-height:1.7;
+      max-width:930px;
+    }
+
     .hero-cta{
       display:flex;
       gap:12px;
@@ -436,11 +448,124 @@
       color:rgba(255,255,255,.56);
       font-size:13px;
     }
+    .map-frame{
+      width:100%;
+      min-height:340px;
+      border:0;
+      border-radius:20px;
+      background:rgba(255,255,255,.04);
+    }
+    .route-map-shell{
+      margin-top:16px;
+      display:grid;
+      gap:14px;
+    }
+    .route-map-canvas{
+      width:100%;
+      min-height:520px;
+      border-radius:20px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.05);
+      overflow:hidden;
+    }
+    .route-map-toolbar{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .route-map-toolbar select{
+      width:auto;
+      min-width:180px;
+    }
+    .route-map-legend{
+      display:grid;
+      gap:10px;
+    }
+    .hke-route-legend-item{
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);
+    }
+    .hke-route-legend-swatch{
+      width:12px;
+      height:12px;
+      border-radius:999px;
+      margin-top:6px;
+      flex:0 0 auto;
+    }
+    .hke-route-legend-copy{
+      color:var(--muted);
+      line-height:1.7;
+      font-size:14px;
+    }
+    .hke-route-legend-copy strong{
+      display:block;
+      color:#fff;
+      margin-bottom:2px;
+    }
+    .hke-route-legend-waypoints{
+      color:rgba(244,247,251,.58);
+      font-size:13px;
+    }
+    .route-map-message{
+      display:none;
+      padding:14px 16px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      line-height:1.7;
+    }
+    .booking-summary-card{
+      background:linear-gradient(180deg, rgba(216,183,104,.12), rgba(255,255,255,.04));
+      border:1px solid rgba(216,183,104,.22);
+      border-radius:24px;
+      padding:22px;
+    }
+    .booking-summary-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px;
+      margin-top:16px;
+    }
+    .booking-summary-item{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px 16px;
+    }
+    .booking-summary-item h4{
+      margin:0 0 8px;
+      font-size:13px;
+      color:rgba(244,247,251,.72);
+      font-weight:700;
+      letter-spacing:.02em;
+      text-transform:uppercase;
+    }
+    .booking-summary-item p{
+      margin:0;
+      color:#fff;
+      font-size:18px;
+      line-height:1.5;
+      font-weight:800;
+    }
+    .booking-summary-note{
+      margin-top:14px;
+      color:#f5e4b6;
+      font-size:14px;
+      line-height:1.8;
+    }
 
     @media (max-width: 980px){
       .grid-2,
       .grid-3,
-      .mini-grid{
+      .mini-grid,
+      .booking-summary-grid{
         grid-template-columns:1fr;
       }
     }
@@ -506,8 +631,11 @@
     }
   </style>
 
+<link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/hke-polish.css">
-<script src="scripts/hke-auth-gate.js"></script>
+<script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+<script src="scripts/config.js"></script>
+<script src="scripts/hke-route-map.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -528,10 +656,12 @@
     <section class="hero glass">
       <h2 class="hero-title" id="tripTitle">Generated Itinerary</h2>
       <p class="hero-summary" id="tripSummary">Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences.</p>
+      <div id="plannerNotice" class="hero-notice"></div>
 
       <div class="hero-cta">
         <a id="careAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Talk to Customer Care</a>
         <a id="messageAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">WhatsApp Message</a>
+        <a id="bookNowTopAction" class="btn btn-primary" href="book.html">Book Now</a>
         <button id="editAction" class="btn btn-primary" type="button">Edit Itinerary</button>
       </div>
 
@@ -565,6 +695,38 @@
     </section>
 
     <section class="section glass">
+      <h3 class="section-title">Book Now</h3>
+      <p class="section-sub">Reserve this trip with a 20% booking amount. Final confirmation stays with the HKE team before travel.</p>
+      <div class="booking-summary-card">
+        <div class="hero-cta" style="margin-top:0;">
+          <a id="bookNowAction" class="btn btn-primary" href="book.html">Book Now</a>
+        </div>
+        <div class="booking-summary-grid" id="bookingSummaryGrid"></div>
+        <div class="booking-summary-note" id="bookingSummaryNote">Estimated price — final confirmation by HKE team</div>
+      </div>
+    </section>
+
+    <section class="section glass">
+      <h3 class="section-title">Route Map</h3>
+      <p class="section-sub">You can view the route and open directions before booking. Download/export stays locked until after payment.</p>
+      <div class="hero-cta" style="margin-top:0;">
+        <a id="routeMapAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">View Full Route</a>
+        <a id="directionsAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Open Complete Route in Google Maps</a>
+      </div>
+      <div class="note-box" id="routeMapSummary" style="margin-top:16px;">Route details will appear here.</div>
+      <div class="route-map-shell">
+        <div class="route-map-toolbar">
+          <select id="dayRouteSelect" aria-label="Select day route"></select>
+          <a id="openDayRouteAction" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Open Day Route</a>
+        </div>
+        <div id="routeMapMessage" class="route-map-message">Interactive Google Maps is unavailable. Showing fallback route preview.</div>
+        <div id="hkeRouteMap" class="route-map-canvas"></div>
+        <div id="hkeRouteLegend" class="route-map-legend"></div>
+        <iframe id="routeMapFrame" class="map-frame" loading="lazy" referrerpolicy="no-referrer-when-downgrade" style="margin-top:0;"></iframe>
+      </div>
+    </section>
+
+    <section class="section glass">
       <h3 class="section-title">Day-wise Itinerary</h3>
       <p class="section-sub">Prepared with practical pacing, travel comfort, sightseeing flow, and destination suitability in mind.</p>
       <div id="daysWrap"></div>
@@ -593,16 +755,24 @@
   </div>
 
   <script>
+    console.log("HKE itinerary-result loaded: 20260505_itinerary_result_fix");
     const API_BASE = "https://hke-backend.onrender.com";
     const API_CHAT = `${API_BASE}/api/ai/chat`;
     const API_WHATSAPP_LOG = `${API_BASE}/api/whatsapp/log`;
     const COMPANY_PHONE = "919797294747";
     const CUSTOMER_PROFILE_KEY = "HKE_CUSTOMER_PROFILE";
+    const LATEST_AI_RESPONSE_KEY = "hke_latest_ai_response";
+    const LATEST_ITINERARY_KEY = "hke_latest_itinerary";
+    const LATEST_PLANNER_NOTICE_KEY = "hke_latest_planner_notice";
+    const BOOKING_CONTEXT_KEY = "HKE_BOOKING_CONTEXT";
 
     const $ = (id) => document.getElementById(id);
 
     let currentCustomer = null;
     let currentItinerary = null;
+    let currentRouteMap = null;
+    let currentPricing = null;
+    let latestAiResponse = null;
 
     function safeJSON(value) {
       try {
@@ -630,12 +800,40 @@
       return safeJSON(localStorage.getItem("hkeLatestTripPlan")) || {};
     }
 
+    function getLatestAiResponse() {
+      return (
+        safeJSON(sessionStorage.getItem(LATEST_AI_RESPONSE_KEY)) ||
+        safeJSON(localStorage.getItem(LATEST_AI_RESPONSE_KEY)) ||
+        null
+      );
+    }
+
+    function getLatestItinerary() {
+      return (
+        safeJSON(sessionStorage.getItem(LATEST_ITINERARY_KEY)) ||
+        safeJSON(localStorage.getItem(LATEST_ITINERARY_KEY)) ||
+        null
+      );
+    }
+
+    function getPlannerNotice() {
+      return (
+        safeJSON(sessionStorage.getItem(LATEST_PLANNER_NOTICE_KEY)) ||
+        safeJSON(localStorage.getItem(LATEST_PLANNER_NOTICE_KEY)) ||
+        null
+      );
+    }
+
     function getStoredCustomerProfile() {
       return safeJSON(localStorage.getItem(CUSTOMER_PROFILE_KEY)) || {};
     }
 
     function cleanPhone(value = "") {
       return String(value).replace(/\D/g, "").slice(0, 10);
+    }
+
+    function formatINR(value) {
+      return `Rs ${Math.round(Number(value) || 0).toLocaleString("en-IN")}`;
     }
 
     function persistCustomerProfile() {
@@ -708,6 +906,254 @@
       return `https://wa.me/${COMPANY_PHONE}?text=${text}`;
     }
 
+    function buildRouteMap(customer, storedRouteMap) {
+      if (storedRouteMap && (storedRouteMap.googleMapsSearchUrl || (storedRouteMap.dayRoutes && storedRouteMap.dayRoutes.length))) {
+        return storedRouteMap;
+      }
+      const destination = customer?.destination || currentItinerary?.meta?.destination || "";
+      const places = customer?.places || [];
+      const endPoint = customer?.endPoint || destination;
+      return {
+        origin: customer?.fromLocation || "",
+        startPoint: customer?.fromLocation || "",
+        destination,
+        endPoint,
+        places,
+        googleMapsSearchUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([destination].concat(places).filter(Boolean).join(", ") || destination)}`,
+        googleMapsDirectionsUrl: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(customer?.fromLocation || destination || "")}&destination=${encodeURIComponent(endPoint || destination || "")}&travelmode=driving`
+      };
+    }
+
+    function extractTripDays(customer, itinerary) {
+      const customerDays = Number(customer?.days || 0);
+      if (customerDays > 0) return customerDays;
+      const itineraryDays = Array.isArray(itinerary?.days) ? itinerary.days.length : 0;
+      return itineraryDays || 1;
+    }
+
+    function getDestinationBasePrice(destination = "") {
+      const value = String(destination || "").toLowerCase();
+      if (value.includes("kashmir")) return 16999;
+      if (value.includes("manali")) return 15999;
+      if (value.includes("kerala")) return 18499;
+      if (value.includes("himachal")) return 19999;
+      if (value.includes("leh") || value.includes("ladakh")) return 22999;
+      if (value.includes("uttarakhand")) return 17999;
+      if (value.includes("goa")) return 14999;
+      if (value.includes("rajasthan")) return 18999;
+      return 17499;
+    }
+
+    function getBudgetMultiplier(value = "") {
+      const budget = String(value || "").toLowerCase();
+      if (budget.includes("luxury")) return 1.45;
+      if (budget.includes("premium")) return 1.28;
+      if (budget.includes("deluxe")) return 1.14;
+      if (budget.includes("budget")) return 0.9;
+      return 1;
+    }
+
+    function getHotelMultiplier(value = "") {
+      const hotel = String(value || "").toLowerCase();
+      if (hotel.includes("luxury")) return 1.34;
+      if (hotel.includes("premium")) return 1.2;
+      if (hotel.includes("deluxe")) return 1.1;
+      if (hotel.includes("budget")) return 0.9;
+      return 1;
+    }
+
+    function getVehicleAdjustment(value = "") {
+      const vehicle = String(value || "").toLowerCase();
+      if (vehicle.includes("crysta")) return 3200;
+      if (vehicle.includes("innova")) return 2400;
+      if (vehicle.includes("suv")) return 1800;
+      if (vehicle.includes("tempo")) return 2800;
+      if (vehicle.includes("sedan")) return -1000;
+      return 0;
+    }
+
+    function buildPricingSummary(customer, itinerary, storedPlan) {
+      const existingPricing = storedPlan?.pricing;
+      if (existingPricing && Number(existingPricing.finalFare || 0) > 0) {
+        return {
+          ...existingPricing,
+          packageName: existingPricing.packageName || itinerary?.title || customer?.packageName || customer?.destination || "HKE Package",
+          destination: existingPricing.destination || customer?.destination || itinerary?.meta?.destination || "",
+          tripDays: Number(existingPricing.tripDays || extractTripDays(customer, itinerary))
+        };
+      }
+
+      const travellers = Math.max(1, Number(customer?.travellers || 1));
+      const tripDays = Math.max(1, extractTripDays(customer, itinerary));
+      const packageName = itinerary?.title || customer?.packageName || `${customer?.destination || "HKE"} Package`;
+      const destination = customer?.destination || itinerary?.meta?.destination || "";
+      const basePerTraveller = getDestinationBasePrice(destination);
+      const dayAdjustment = Math.max(0, tripDays - 5) * 1400;
+      const vehicleAdjustment = getVehicleAdjustment(customer?.vehicle);
+      const estimatedPerTraveller = Math.round(
+        (basePerTraveller + dayAdjustment + vehicleAdjustment) *
+        getBudgetMultiplier(customer?.budget) *
+        getHotelMultiplier(customer?.hotelClass)
+      );
+      const totalAmount = Math.max(estimatedPerTraveller * travellers, 0);
+      const advanceAmount = Math.round(totalAmount * 0.2);
+      const remainingAmount = Math.max(0, totalAmount - advanceAmount);
+
+      return {
+        packageName,
+        destination,
+        tripDays,
+        pricePerTraveller: estimatedPerTraveller,
+        finalFare: totalAmount,
+        advanceFare: advanceAmount,
+        balanceFare: remainingAmount,
+        isEstimated: true,
+        estimateLabel: "Estimated price — final confirmation by HKE team"
+      };
+    }
+
+    function buildBookingContext() {
+      const pricing = currentPricing || buildPricingSummary(currentCustomer, currentItinerary, getStoredPlan());
+      return {
+        packageName: pricing.packageName,
+        destination: pricing.destination,
+        pricePerTraveller: pricing.pricePerTraveller,
+        totalAmount: pricing.finalFare,
+        advanceAmount: pricing.advanceFare,
+        remainingAmount: pricing.balanceFare,
+        customerName: safe(currentCustomer?.name, ""),
+        phone: cleanPhone(currentCustomer?.phone || ""),
+        email: safe(currentCustomer?.email, ""),
+        startDate: safe(currentCustomer?.startDate, ""),
+        endDate: safe(currentCustomer?.endDate, ""),
+        travellers: Number(currentCustomer?.travellers || 0),
+        rooms: Number(currentCustomer?.rooms || 0),
+        tripDays: Number(pricing.tripDays || extractTripDays(currentCustomer, currentItinerary)),
+        originPage: "itinerary-result.html",
+        itinerary: currentItinerary || {},
+        routeMap: currentRouteMap || {},
+        customer: currentCustomer || {},
+        pricing
+      };
+    }
+
+    function persistBookingContext() {
+      const context = buildBookingContext();
+      localStorage.setItem(BOOKING_CONTEXT_KEY, JSON.stringify(context));
+      sessionStorage.setItem(BOOKING_CONTEXT_KEY, JSON.stringify(context));
+      return context;
+    }
+
+    function buildBookNowUrl() {
+      const context = persistBookingContext();
+      const params = new URLSearchParams();
+      params.set("packageName", context.packageName || "");
+      params.set("destination", context.destination || "");
+      params.set("pricePerTraveller", String(context.pricePerTraveller || 0));
+      params.set("totalAmount", String(context.totalAmount || 0));
+      params.set("advanceAmount", String(context.advanceAmount || 0));
+      params.set("remainingAmount", String(context.remainingAmount || 0));
+      params.set("customerName", context.customerName || "");
+      params.set("phone", context.phone || "");
+      params.set("email", context.email || "");
+      params.set("startDate", context.startDate || "");
+      params.set("endDate", context.endDate || "");
+      params.set("travellers", String(context.travellers || 0));
+      params.set("rooms", String(context.rooms || 0));
+      params.set("tripDays", String(context.tripDays || 0));
+      params.set("origin", context.originPage || "itinerary-result.html");
+      return `book.html?${params.toString()}`;
+    }
+
+    function renderBookingSummary() {
+      currentPricing = buildPricingSummary(currentCustomer, currentItinerary, getStoredPlan());
+      const grid = $("bookingSummaryGrid");
+      if (!grid) return;
+
+      const summary = [
+        ["Package / Destination", `${safe(currentPricing.packageName, "-")} / ${safe(currentPricing.destination, "-")}`],
+        ["Travellers", safe(currentCustomer?.travellers, "-")],
+        ["Rooms", safe(currentCustomer?.rooms, "-")],
+        ["Vehicle", safe(currentCustomer?.vehicle || currentItinerary?.extraInfo?.vehicle, "-")],
+        ["Hotel Category", safe(currentCustomer?.hotelClass || currentItinerary?.extraInfo?.hotel, "-")],
+        ["Total Estimated Package Price", formatINR(currentPricing.finalFare)],
+        ["20% Booking Amount", formatINR(currentPricing.advanceFare)],
+        ["Remaining 80%", formatINR(currentPricing.balanceFare)]
+      ];
+
+      grid.innerHTML = summary.map(([label, value]) => `
+        <div class="booking-summary-item">
+          <h4>${escapeHTML(label)}</h4>
+          <p>${escapeHTML(value)}</p>
+        </div>
+      `).join("");
+
+      $("bookingSummaryNote").textContent = currentPricing.estimateLabel || "";
+
+      const bookUrl = buildBookNowUrl();
+      $("bookNowTopAction").href = bookUrl;
+      $("bookNowAction").href = bookUrl;
+    }
+
+    function renderEnhancedRouteMap() {
+      if (!window.HKERouteMap) return;
+
+      window.HKERouteMap.render({
+        routeMap: currentRouteMap || {},
+        itinerary: currentItinerary || {},
+        customer: currentCustomer || {},
+        summaryElement: $("routeMapSummary"),
+        mapElement: $("hkeRouteMap"),
+        legendElement: $("hkeRouteLegend"),
+        daySelectElement: $("dayRouteSelect"),
+        viewFullRouteButton: $("routeMapAction"),
+        openDayRouteButton: $("openDayRouteAction"),
+        openCompleteRouteButton: $("directionsAction"),
+        fallbackFrame: $("routeMapFrame"),
+        messageElement: $("routeMapMessage")
+      });
+    }
+
+    function prettyPrintValue(value) {
+      if (value === null || value === undefined || value === "") return "";
+      if (typeof value === "string") return value.trim();
+
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }
+
+    function extractRawDayWiseText(value) {
+      if (!value) return "";
+      if (typeof value === "string") return value.trim();
+      return prettyPrintValue(value);
+    }
+
+    function coerceItineraryPayload(data) {
+      if (!data || typeof data !== "object") return {};
+      if (data.itinerary && typeof data.itinerary === "object" && !Array.isArray(data.itinerary)) {
+        return data.itinerary;
+      }
+
+      const itineraryValue = data.itinerary;
+      const next = {
+        title: data.generatedTitle || data.title || "Generated Itinerary",
+        summary:
+          data.generatedSummary ||
+          data.summary ||
+          (typeof itineraryValue === "string" ? itineraryValue : ""),
+        dayWiseItinerary: data.dayWiseItinerary || data.day_wise_itinerary || null,
+        rawText:
+          typeof itineraryValue === "string"
+            ? itineraryValue
+            : prettyPrintValue(itineraryValue)
+      };
+
+      return next.summary || next.rawText || next.title ? next : {};
+    }
+
     async function logWhatsAppEvent(payload) {
       try {
         await fetch(API_WHATSAPP_LOG, {
@@ -731,6 +1177,10 @@
       const messageUrl = buildItineraryMessageUrl();
       $("careAction").href = careUrl;
       $("messageAction").href = messageUrl;
+      $("bookNowTopAction").href = buildBookNowUrl();
+      $("bookNowAction").href = $("bookNowTopAction").href;
+      $("routeMapAction").href = currentRouteMap?.googleMapsSearchUrl || "#";
+      $("directionsAction").href = currentRouteMap?.googleMapsDirectionsUrl || "#";
 
       $("careAction").onclick = function (event) {
         event.preventDefault();
@@ -835,12 +1285,63 @@
       });
     }
 
+    function renderRawItinerary(itineraryValue) {
+      const wrap = $("daysWrap");
+      const text = prettyPrintValue(itineraryValue);
+
+      if (!text) {
+        wrap.innerHTML = `<div class="list-card"><p class="empty">No day-wise itinerary available.</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="list-card">
+          <p class="empty">${escapeHTML(text)}</p>
+        </div>
+      `;
+    }
+
+    function renderMissingItinerary() {
+      $("tripTitle").textContent = "Generated Itinerary";
+      $("tripSummary").textContent = "No itinerary data found. Please generate again.";
+      $("metaGrid").innerHTML = "";
+      $("extraGrid").innerHTML = "";
+      $("highlightsList").innerHTML = "<li>No itinerary data found. Please generate again.</li>";
+      $("inclusionsList").innerHTML = "<li>No itinerary data found. Please generate again.</li>";
+      $("exclusionsList").innerHTML = "<li>No itinerary data found. Please generate again.</li>";
+      $("termsList").innerHTML = "<li>No itinerary data found. Please generate again.</li>";
+      $("routeMapSummary").textContent = "No itinerary data found. Please generate again.";
+      $("hkeRouteLegend").innerHTML = "";
+      $("hkeRouteMap").innerHTML = "";
+      $("routeMapMessage").style.display = "block";
+      $("routeMapFrame").removeAttribute("src");
+      $("daysWrap").innerHTML = `<div class="list-card"><p class="empty">No itinerary data found. Please generate again.</p></div>`;
+    }
+
     function renderAll() {
       currentItinerary = currentItinerary || {};
+      const plannerNotice = getPlannerNotice();
+      const plannerNoticeEl = $("plannerNotice");
+      if (plannerNoticeEl) {
+        if (plannerNotice?.message) {
+          plannerNoticeEl.textContent = plannerNotice.message;
+          plannerNoticeEl.style.display = "block";
+        } else {
+          plannerNoticeEl.textContent = "";
+          plannerNoticeEl.style.display = "none";
+        }
+      }
+      if (!latestAiResponse && !currentItinerary.title && !currentItinerary.summary && !currentItinerary.rawText && !currentItinerary.dayWiseItinerary && !(Array.isArray(currentItinerary.days) && currentItinerary.days.length)) {
+        renderMissingItinerary();
+        return;
+      }
+      currentRouteMap = buildRouteMap(currentCustomer, currentRouteMap);
+      const latestTitle = latestAiResponse?.generatedTitle || latestAiResponse?.title || currentItinerary.title;
+      const latestSummary = latestAiResponse?.generatedSummary || latestAiResponse?.summary || currentItinerary.summary;
 
-      $("tripTitle").textContent = safe(currentItinerary.title, "Generated Itinerary");
+      $("tripTitle").textContent = safe(latestTitle, "Generated Itinerary");
       $("tripSummary").textContent = safe(
-        currentItinerary.summary,
+        latestSummary,
         "Your itinerary has been prepared in a premium travel-consultant format based on your selected preferences."
       );
 
@@ -868,7 +1369,21 @@
       addList("inclusionsList", currentItinerary.inclusions || [], "Inclusions will appear here.");
       addList("exclusionsList", currentItinerary.exclusions || [], "Exclusions will appear here.");
       addList("termsList", currentItinerary.terms || [], "Terms will appear here.");
-      renderDays(currentItinerary.days || []);
+      renderBookingSummary();
+      $("routeMapSummary").textContent = `Route: ${safe(currentRouteMap?.startPoint, "-")} to ${safe(currentRouteMap?.endPoint || currentRouteMap?.destination, "-")}. Stops: ${safe((currentRouteMap?.places || []).join(", "), currentRouteMap?.destination || "-")}`;
+      $("routeMapFrame").src = `https://www.google.com/maps?q=${encodeURIComponent(currentRouteMap?.destination || currentCustomer?.destination || "")}&output=embed`;
+      renderEnhancedRouteMap();
+      if (Array.isArray(currentItinerary.days) && currentItinerary.days.length) {
+        renderDays(currentItinerary.days);
+      } else {
+        renderRawItinerary(
+          latestAiResponse?.itinerary ||
+          currentItinerary.dayWiseItinerary ||
+          extractRawDayWiseText(latestAiResponse?.dayWiseItinerary || latestAiResponse?.day_wise_itinerary) ||
+          currentItinerary.rawText ||
+          currentItinerary.itinerary
+        );
+      }
       updateActionLinks();
     }
 
@@ -880,8 +1395,11 @@
       const latestPlan = getStoredPlan();
       latestPlan.customer = currentCustomer || latestPlan.customer || {};
       latestPlan.itinerary = currentItinerary || latestPlan.itinerary || {};
+      latestPlan.routeMap = currentRouteMap || latestPlan.routeMap || {};
+      latestPlan.pricing = currentPricing || latestPlan.pricing || buildPricingSummary(currentCustomer, currentItinerary, latestPlan);
       latestPlan.updatedAt = new Date().toISOString();
       localStorage.setItem("hkeLatestTripPlan", JSON.stringify(latestPlan));
+      persistBookingContext();
       persistCustomerProfile();
     }
 
@@ -1020,7 +1538,11 @@
         currentItinerary = inferEditedItinerary(response);
         persistPlan();
         renderAll();
-        showEditStatus("Itinerary updated successfully.", "ok");
+        if (response?.source === "fallback") {
+          showEditStatus("OpenAI edit was unavailable, so a fallback itinerary version was generated.", "err");
+        } else {
+          showEditStatus("Itinerary updated successfully.", "ok");
+        }
       } catch (err) {
         showEditStatus(err.message || "Unable to update itinerary right now.", "err");
       } finally {
@@ -1038,13 +1560,18 @@
     function init() {
       const storedPlan = getStoredPlan();
       const storedProfile = getStoredCustomerProfile();
+      latestAiResponse = getLatestAiResponse();
       currentCustomer =
         safeJSON(sessionStorage.getItem("hke_customer_data")) ||
         storedPlan.customer ||
         storedProfile ||
         {};
+      currentRouteMap = storedPlan.routeMap || null;
       currentItinerary =
+        (latestAiResponse ? coerceItineraryPayload(latestAiResponse) : null) ||
+        getLatestItinerary() ||
         safeJSON(sessionStorage.getItem("hke_itinerary_data")) ||
+        safeJSON(localStorage.getItem("hke_itinerary_data")) ||
         storedPlan.itinerary ||
         {};
 

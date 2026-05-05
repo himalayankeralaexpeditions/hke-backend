@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Book Your Trip</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="media/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/hke-polish.css" />
+  <style>
+    :root {
+      --gold: #d9b25f;
+      --gold-soft: #f0d08a;
+      --bg: #081018;
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel-strong: rgba(255, 255, 255, 0.09);
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #eaf0f8;
+      --muted: rgba(234, 240, 248, 0.72);
+      --success: #c7ffd7;
+      --danger: #ffc2c2;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        linear-gradient(115deg, rgba(3, 8, 13, 0.92), rgba(6, 17, 28, 0.76)),
+        url("media/hero-banner.jpg") center/cover fixed no-repeat;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(760px 440px at 18% 12%, rgba(217, 178, 95, 0.18), transparent 60%),
+        radial-gradient(840px 480px at 82% 20%, rgba(240, 208, 138, 0.10), transparent 60%),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.46));
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(14px);
+      background: rgba(8, 12, 18, 0.62);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand img {
+      width: 50px;
+      height: 50px;
+      object-fit: contain;
+      border-radius: 14px;
+      background: #fff;
+      padding: 6px;
+      box-shadow: 0 0 18px rgba(217, 178, 95, 0.26);
+    }
+    .brand-copy p {
+      margin: 0;
+      line-height: 1.2;
+    }
+    .brand-copy .sub {
+      color: rgba(240, 208, 138, 0.88);
+      font-size: 0.94rem;
+    }
+    .page-shell {
+      position: relative;
+      z-index: 1;
+      padding: 28px 0 52px;
+    }
+    .surface {
+      width: min(1180px, 94%);
+      margin: 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 22px;
+      padding: 28px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(135deg, rgba(217, 178, 95, 0.11), rgba(255, 255, 255, 0.02)),
+        rgba(255, 255, 255, 0.03);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      color: var(--gold-soft);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+    h1 {
+      margin: 16px 0 10px;
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      line-height: 1.05;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+    .hero-copy p,
+    .soft-note {
+      color: var(--muted);
+      line-height: 1.75;
+    }
+    .cta-row,
+    .top-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .top-links a,
+    .btn-gold,
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 800;
+      transition: transform 0.15s ease, background 0.15s ease, filter 0.15s ease;
+    }
+    .top-links a,
+    .btn-ghost {
+      padding: 11px 16px;
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.07);
+    }
+    .btn-gold {
+      border: 0;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-soft));
+      color: #0a1016;
+      box-shadow: 0 18px 34px rgba(217, 178, 95, 0.20);
+      cursor: pointer;
+    }
+    .top-links a:hover,
+    .btn-gold:hover,
+    .btn-ghost:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.02);
+      color: inherit;
+    }
+    .hero-side {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .glass-card,
+    .section-card {
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 22px;
+      background: rgba(0, 0, 0, 0.18);
+      padding: 18px;
+    }
+    .hero-side .headline {
+      color: var(--gold-soft);
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .meta-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+    }
+    .meta-line:last-child { border-bottom: 0; }
+    .meta-line strong { color: var(--text); }
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1.12fr 0.88fr;
+      gap: 22px;
+      padding: 28px;
+    }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 1.08rem;
+      font-weight: 800;
+      color: var(--gold-soft);
+    }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .field-grid .full { grid-column: 1 / -1; }
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      outline: none;
+      font: inherit;
+    }
+    .field input[readonly] {
+      color: rgba(234, 240, 248, 0.84);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .option-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .pay-option {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 16px;
+      cursor: pointer;
+    }
+    .pay-option.active {
+      border-color: rgba(217, 178, 95, 0.44);
+      background: linear-gradient(135deg, rgba(217, 178, 95, 0.14), rgba(255, 255, 255, 0.04));
+    }
+    .pay-option input {
+      margin-top: 4px;
+      accent-color: #d9b25f;
+    }
+    .pay-option h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .pay-option p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .amount-tag {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--gold-soft);
+    }
+    .summary-box {
+      display: grid;
+      gap: 12px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+    }
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-row strong { color: var(--text); }
+    .summary-row.total strong:last-child,
+    .summary-row.payable strong:last-child { color: var(--gold-soft); }
+    .status-box {
+      display: none;
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      line-height: 1.7;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+    }
+    .status-box.success {
+      display: block;
+      border-color: rgba(113, 255, 165, 0.22);
+      background: rgba(113, 255, 165, 0.08);
+      color: var(--success);
+    }
+    .status-box.error {
+      display: block;
+      border-color: rgba(255, 150, 150, 0.24);
+      background: rgba(255, 124, 124, 0.08);
+      color: var(--danger);
+    }
+    .status-box.info { display: block; }
+    .mini-list {
+      margin: 14px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+    @media (max-width: 992px) {
+      .hero,
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 640px) {
+      .surface { width: calc(100% - 18px); }
+      .hero,
+      .content-grid { padding: 18px; }
+      .field-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+  <script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container py-3 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" />
+        <div class="brand-copy">
+          <p><strong>Himalayan Kerala Expeditions</strong></p>
+          <p class="sub">We Plan. We Care.</p>
+        </div>
+      </div>
+      <div class="top-links">
+        <a href="index.html">Home</a>
+        <a href="my-orders.html" data-hke-requires-login="true">My Booking</a>
+      </div>
+    </div>
+  </header>
+  <main class="page-shell">
+    <section class="surface">
+      <div class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Production Booking Flow</div>
+          <h1 id="heroTitle">Secure your HKE package in one flow.</h1>
+          <p id="heroText">Review your package details, choose 20% advance or full payment, and complete your booking using Razorpay.</p>
+          <div class="cta-row mt-4">
+            <a class="btn-ghost" href="index.html">Back to Packages</a>
+            <a class="btn-ghost" href="my-orders.html" data-hke-requires-login="true">Open My Booking</a>
+          </div>
+        </div>
+        <div class="hero-side">
+          <div class="glass-card">
+            <div class="headline">Booking Snapshot</div>
+            <div class="meta-line"><span>Package</span><strong id="snapshotPackage">-</strong></div>
+            <div class="meta-line"><span>Destination</span><strong id="snapshotDestination">-</strong></div>
+            <div class="meta-line"><span>Price / Traveller</span><strong id="snapshotPrice">Rs 0</strong></div>
+            <div class="meta-line"><span>Payment Mode</span><strong id="snapshotMode">20% advance</strong></div>
+          </div>
+          <div class="glass-card">
+            <div class="headline">Customer Login</div>
+            <p class="soft-note mb-0">OTP login is required before payment. This page uses the existing HKE auth gate and only starts payment after a verified login.</p>
+          </div>
+        </div>
+      </div>
+      <div class="content-grid">
+        <section class="section-card">
+          <h2 class="section-title">Booking Form</h2>
+          <form id="bookingForm" novalidate>
+            <div class="field-grid">
+              <div class="field full">
+                <label for="packageName">Package / Destination</label>
+                <input id="packageName" name="packageName" type="text" required />
+              </div>
+              <div class="field">
+                <label for="destination">Destination</label>
+                <input id="destination" name="destination" type="text" required />
+              </div>
+              <div class="field">
+                <label for="pricePerTraveller">Price Per Traveller (INR)</label>
+                <input id="pricePerTraveller" name="pricePerTraveller" type="number" min="1" step="1" required />
+              </div>
+              <div class="field">
+                <label for="customerName">Customer Name</label>
+                <input id="customerName" name="customerName" type="text" required />
+              </div>
+              <div class="field">
+                <label for="phone">Phone</label>
+                <input id="phone" name="phone" type="tel" inputmode="numeric" required />
+              </div>
+              <div class="field">
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" required />
+              </div>
+              <div class="field">
+                <label for="startDate">Start Date</label>
+                <input id="startDate" name="startDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="endDate">End Date</label>
+                <input id="endDate" name="endDate" type="date" readonly />
+              </div>
+              <div class="field">
+                <label for="travellers">Travellers</label>
+                <input id="travellers" name="travellers" type="number" min="1" step="1" value="2" required />
+              </div>
+              <div class="field">
+                <label for="rooms">Rooms</label>
+                <input id="rooms" name="rooms" type="number" min="1" step="1" value="1" required />
+              </div>
+              <div class="field">
+                <label for="tripDays">Trip Duration (Days)</label>
+                <input id="tripDays" name="tripDays" type="number" min="1" step="1" value="6" required />
+              </div>
+              <div class="field">
+                <label for="originPage">Source</label>
+                <input id="originPage" name="originPage" type="text" readonly />
+              </div>
+            </div>
+            <div class="option-grid">
+              <label class="pay-option" data-payment-option="advance">
+                <input type="radio" name="paymentOption" value="advance" checked />
+                <div>
+                  <h3>20% Advance Payment</h3>
+                  <p>Reserve your package now and pay the remaining balance before travel.</p>
+                  <span class="amount-tag" id="advanceAmountLabel">Rs 0</span>
+                </div>
+              </label>
+              <label class="pay-option" data-payment-option="full">
+                <input type="radio" name="paymentOption" value="full" />
+                <div>
+                  <h3>Full Payment</h3>
+                  <p>Pay the full package amount now and lock the booking completely.</p>
+                  <span class="amount-tag" id="fullAmountLabel">Rs 0</span>
+                </div>
+              </label>
+            </div>
+            <div id="bookingStatus" class="status-box"></div>
+            <div class="mt-4">
+              <button id="proceedBtn" class="btn-gold" type="submit">Proceed to Pay</button>
+            </div>
+          </form>
+        </section>
+        <aside class="section-card">
+          <h2 class="section-title">Payment Summary</h2>
+          <div class="summary-box">
+            <div class="summary-row"><span>Booking Reference</span><strong id="bookingRefPreview">Will be generated on payment</strong></div>
+            <div class="summary-row"><span>Total Amount</span><strong id="totalAmountValue">Rs 0</strong></div>
+            <div class="summary-row"><span>Advance Amount (20%)</span><strong id="advanceAmountValue">Rs 0</strong></div>
+            <div class="summary-row"><span>Remaining Amount</span><strong id="remainingAmountValue">Rs 0</strong></div>
+            <div class="summary-row"><span>Balance Due Date</span><strong id="balanceDueDateValue">-</strong></div>
+            <div class="summary-row payable"><strong>Payable Now</strong><strong id="payableNowValue">Rs 0</strong></div>
+            <div class="summary-row total"><strong>Package Total</strong><strong id="packageTotalValue">Rs 0</strong></div>
+          </div>
+          <ul class="mini-list">
+            <li>Razorpay key is always fetched from the backend and never stored in the frontend source.</li>
+            <li>If Razorpay is not configured, this page shows a clear message instead of a broken payment flow.</li>
+            <li>Remaining balance must be paid 7 days before travel.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="scripts/book.js?v=20260504_booking"></script>
+  <script src="scripts/hke-polish.js"></script>
+</body>
+</html>

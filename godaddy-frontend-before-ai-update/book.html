@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Book Your Slot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <style>
+    :root{
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --gold3:#f5dfaa;
+      --text:#EAEFF7;
+      --muted: rgba(234,239,247,.72);
+      --panel: rgba(255,255,255,.06);
+      --border: rgba(255,255,255,.12);
+      --shadow: 0 18px 55px rgba(0,0,0,.45);
+      --danger:#ffb8b8;
+      --success:#bdf5c8;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+      overflow-x:hidden;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.80), rgba(0,0,0,.38)),
+        url("media/hero-banner.jpg") center/cover no-repeat fixed;
+      position: relative;
+    }
+
+    body::before{
+      content:"";
+      position: fixed;
+      inset: 0;
+      pointer-events:none;
+      background:
+        radial-gradient(900px 520px at 18% 18%, rgba(217,178,95,.18), transparent 60%),
+        radial-gradient(900px 520px at 85% 20%, rgba(240,208,138,.10), transparent 58%),
+        radial-gradient(900px 520px at 50% 92%, rgba(255,255,255,.06), transparent 60%),
+        linear-gradient(to bottom, rgba(0,0,0,.44), rgba(0,0,0,.76));
+      z-index: 0;
+    }
+
+    .topbar{
+      position: sticky;
+      top:0;
+      z-index: 10;
+      padding: 14px 0;
+      backdrop-filter: blur(14px);
+      background: rgba(10,12,16,.58);
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+    }
+
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .brand img{
+      height:46px;
+      background:#fff;
+      padding:6px;
+      border-radius:14px;
+      box-shadow:0 0 14px rgba(217,178,95,.35);
+    }
+    .brand .t1{ font-weight:700; line-height:1.15; margin:0; }
+    .brand .t2{ font-weight:500; font-size:.95rem; margin:0; color: rgba(240,208,138,.85); }
+
+    .btn-ghost{
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.16);
+      color: var(--text);
+      font-weight:600;
+      border-radius: 999px;
+      padding: 10px 16px;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      transition: transform .15s ease, background .15s ease;
+    }
+    .btn-ghost:hover{
+      transform: translateY(-1px);
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+    }
+
+    .btn-gold{
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      border:none;
+      color:#0b0f18;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-weight:800;
+      text-decoration:none;
+      box-shadow: 0 18px 35px rgba(217,178,95,.18);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      width: 100%;
+      transition: transform .15s ease, filter .15s ease;
+    }
+    .btn-gold:hover{
+      transform: translateY(-1px);
+      filter: brightness(1.02);
+    }
+
+    .wrap{
+      position: relative;
+      z-index: 2;
+      padding: 26px 12px 44px;
+    }
+
+    .panel{
+      max-width: 1040px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      padding: 22px;
+    }
+
+    .cardx{
+      background: rgba(0,0,0,.26);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      padding: 16px;
+      margin-top: 14px;
+    }
+
+    .pillRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-bottom:12px;
+    }
+
+    .pill{
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight:600;
+      color: rgba(234,239,247,.92);
+    }
+
+    .title{
+      font-weight:800;
+      font-size: 1.75rem;
+      margin: 0;
+    }
+
+    .sub{
+      color: var(--muted);
+      margin-top:8px;
+      font-weight:500;
+      line-height:1.7;
+    }
+
+    .hrx{
+      height:1px;
+      background: rgba(255,255,255,.10);
+      margin: 14px 0;
+    }
+
+    .smallMuted{
+      color: var(--muted);
+      font-weight:500;
+      line-height:1.75;
+    }
+
+    .accordion-button{
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 14px !important;
+      font-weight:750;
+      box-shadow:none !important;
+    }
+
+    .accordion-item{
+      background: transparent;
+      border: none;
+      margin-bottom: 10px;
+    }
+
+    .accordion-body{
+      background: rgba(0,0,0,.22);
+      border: 1px solid rgba(255,255,255,.10);
+      border-top: none;
+      border-radius: 0 0 14px 14px;
+      color: rgba(234,239,247,.88);
+      font-weight:500;
+      line-height:1.8;
+    }
+
+    .route-box{
+      color: rgba(234,239,247,.92);
+      line-height:1.8;
+      font-weight:500;
+    }
+
+    .priceBox{
+      background:
+        linear-gradient(135deg, rgba(217,178,95,.12), rgba(240,208,138,.06)),
+        rgba(255,255,255,.04);
+      border:1px solid rgba(217,178,95,.25);
+      padding:20px;
+      border-radius:20px;
+      text-align:center;
+    }
+
+    .priceLabel{
+      color: var(--muted);
+      font-size:.95rem;
+      font-weight:600;
+    }
+
+    .priceMain{
+      font-size:2.2rem;
+      font-weight:800;
+      margin-top:8px;
+      color: var(--gold3);
+      letter-spacing:-0.5px;
+    }
+
+    .advanceBox{
+      margin-top:14px;
+      padding:14px;
+      border-radius:16px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      text-align:center;
+    }
+
+    .advanceTitle{
+      color: var(--muted);
+      font-size:.92rem;
+      font-weight:600;
+    }
+
+    .advanceValue{
+      margin-top:6px;
+      font-size:1.55rem;
+      font-weight:800;
+      color:#fff;
+    }
+
+    .highlight-note{
+      margin-top:12px;
+      color: var(--muted);
+      font-size:.9rem;
+      line-height:1.7;
+      text-align:center;
+    }
+
+    .successBox, .errorBox{
+      margin-top:14px;
+      border-radius:16px;
+      padding:14px;
+      font-weight:700;
+      display:none;
+    }
+
+    .successBox{
+      background: rgba(24, 100, 46, .24);
+      border:1px solid rgba(129, 231, 162, .26);
+      color: var(--success);
+    }
+
+    .errorBox{
+      background: rgba(120, 21, 21, .22);
+      border:1px solid rgba(255, 181, 181, .24);
+      color: var(--danger);
+    }
+
+    .summaryMini{
+      margin-top:12px;
+      display:grid;
+      grid-template-columns: repeat(2,1fr);
+      gap:10px;
+    }
+
+    .miniItem{
+      background: rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:12px;
+    }
+
+    .miniItem .k{
+      font-size:.84rem;
+      color: var(--muted);
+      margin-bottom:4px;
+    }
+
+    .miniItem .v{
+      font-weight:700;
+      color:#fff;
+    }
+
+    .currencyBadge{
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      color: rgba(234,239,247,.92);
+      font-weight: 600;
+      font-size: .9rem;
+    }
+
+    @media (max-width: 768px){
+      .topbar .container{
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 12px;
+      }
+
+      .topbar .container > div:last-child{
+        width: 100%;
+        display:flex;
+        flex-wrap:wrap;
+      }
+
+      .summaryMini{
+        grid-template-columns: 1fr;
+      }
+
+      .priceMain{
+        font-size:1.8rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="container d-flex justify-content-between align-items-center">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" />
+        <div>
+          <p class="t1">Himalayan Kerala Expeditions</p>
+          <p class="t2">We Plan. We Care.</p>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <a href="ai-planner.html" class="btn-ghost">← Back to Planner</a>
+        <a id="topChat" href="#" class="btn-ghost" target="_blank" rel="noopener">💬 Chat</a>
+        <a href="tel:+919797294747" class="btn-ghost">📞 Call</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="panel">
+      <h1 class="title">Confirm & Pay Advance</h1>
+      <div class="sub">Review your journey, view the final package price, and reserve your slot with a 20% advance payment.</div>
+
+      <div id="noData" class="cardx" style="display:none;">
+        <div style="font-weight:800; font-size:1.2rem;">No booking data found</div>
+        <div class="smallMuted mt-2">Please generate your itinerary first, then continue to booking.</div>
+        <div class="mt-3">
+          <a href="ai-planner.html" class="btn-ghost">Go back to AI Planner</a>
+        </div>
+      </div>
+
+      <div id="content" style="display:none;">
+        <div class="cardx">
+          <div class="pillRow" id="pills"></div>
+
+          <div style="font-weight:800; font-size:1.1rem; margin-bottom:10px;">Customer Details</div>
+          <div id="cust" class="smallMuted"></div>
+
+          <div class="hrx"></div>
+
+          <div style="font-weight:800; font-size:1.1rem; margin-bottom:10px;">Route</div>
+          <div id="route" class="route-box"></div>
+        </div>
+
+        <div class="cardx">
+          <div style="font-weight:800; font-size:1.1rem; margin-bottom:10px;">Day-wise Itinerary</div>
+          <div class="smallMuted">Your travel flow, route structure, and key journey moments are shown below.</div>
+          <div class="accordion mt-3" id="itAccordion"></div>
+        </div>
+
+        <div class="cardx">
+          <div style="font-weight:800; font-size:1.1rem; margin-bottom:10px;">Terms & Policies</div>
+
+          <div class="accordion" id="tpAcc">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#inc">
+                  ✅ Package Includes
+                </button>
+              </h2>
+              <div id="inc" class="accordion-collapse collapse show">
+                <div class="accordion-body">
+                  <ul style="margin:0; padding-left:18px;">
+                    <li>Accommodation as per selected hotel category and confirmation</li>
+                    <li>Private vehicle / bike as per selected travel option</li>
+                    <li>Sightseeing according to itinerary flow and route plan</li>
+                    <li>Guide support if selected during planning</li>
+                    <li>Trip coordination support from HKE team</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#exc">
+                  ❌ Package Excludes
+                </button>
+              </h2>
+              <div id="exc" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                  <ul style="margin:0; padding-left:18px;">
+                    <li>Air, train, or bus tickets unless specifically included</li>
+                    <li>Personal shopping, tips, laundry, and personal expenses</li>
+                    <li>Adventure activity tickets, monument entry tickets, permits where applicable</li>
+                    <li>Anything not specifically mentioned under package includes</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#can">
+                  🔁 Cancellation / Reschedule
+                </button>
+              </h2>
+              <div id="can" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                  <ul style="margin:0; padding-left:18px;">
+                    <li>Your advance amount blocks the slot for vehicle and trip coordination.</li>
+                    <li>Reschedule depends on date availability and season difference.</li>
+                    <li>Cancellation charges may apply based on travel date and blocked services.</li>
+                    <li>Please contact HKE support immediately for urgent changes.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cardx">
+          <div style="font-weight:800; font-size:1.1rem; margin-bottom:10px;">Price & Payment</div>
+          <div class="smallMuted mb-3">
+            Your final package price is calculated from your selected vehicle, hotel category, guide, food option, trip duration, rooms, and package category.
+          </div>
+
+          <div id="priceBox" class="priceBox">
+            <div class="priceLabel">Final Package Price</div>
+            <div id="finalPrice" class="priceMain">₹ --</div>
+
+            <div class="advanceBox">
+              <div class="advanceTitle">Advance to confirm booking slot (20%)</div>
+              <div id="advancePrice" class="advanceValue">₹ --</div>
+            </div>
+
+            <div class="highlight-note">
+              Only the final package amount is shown here. Internal costing is not displayed to the customer.
+            </div>
+
+            <div id="currencyBadge" class="currencyBadge" style="display:none;"></div>
+          </div>
+
+          <div class="summaryMini">
+            <div class="miniItem">
+              <div class="k">Selected Vehicle</div>
+              <div class="v" id="miniVehicle">—</div>
+            </div>
+            <div class="miniItem">
+              <div class="k">Hotel Category</div>
+              <div class="v" id="miniHotel">—</div>
+            </div>
+            <div class="miniItem">
+              <div class="k">Food Option</div>
+              <div class="v" id="miniFood">—</div>
+            </div>
+            <div class="miniItem">
+              <div class="k">Guide Option</div>
+              <div class="v" id="miniGuide">—</div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <button id="payBtn" class="btn-gold">✅ Book your slot (20% advance)</button>
+            <div class="smallMuted mt-2">Secure payment via Razorpay.</div>
+          </div>
+
+          <div class="mt-3 d-flex gap-2 flex-wrap">
+            <a id="chatBtn" href="#" class="btn-ghost" target="_blank" rel="noopener">💬 Chat with Us (WhatsApp)</a>
+            <a href="tel:+919797294747" class="btn-ghost">📞 Talk to Customer Care</a>
+          </div>
+
+          <div id="successBox" class="successBox"></div>
+          <div id="errorBox" class="errorBox"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const COMPANY_PHONE = "919797294747";
+      const RAZORPAY_KEY_ID = "YOUR_RAZORPAY_KEY_ID";
+
+      const $ = (id) => document.getElementById(id);
+
+      let detectedCurrency = {
+        countryCode: "IN",
+        currency: "INR",
+        symbol: "₹",
+        rate: 1,
+        label: "Prices shown in INR"
+      };
+
+      function formatMoney(value, currencyInfo = detectedCurrency) {
+        const amount = Number(value || 0);
+        return `${currencyInfo.symbol} ${amount.toLocaleString("en-US")}`;
+      }
+
+      function escapeHTML(str = "") {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function safeJSON(raw) {
+        try { return JSON.parse(raw); } catch { return null; }
+      }
+
+      function parseItineraryTextToDays(text = "") {
+        const clean = String(text || "").replace(/\r/g, "").trim();
+        if (!clean) return [];
+
+        const chunks = clean.split(/\n(?=Day\s*\d+)/i).filter(Boolean);
+        return chunks.map((chunk, index) => {
+          const lines = chunk.split("\n").map(l => l.trim()).filter(Boolean);
+          const titleLine = lines.shift() || `Day ${index + 1}`;
+          const bulletLines = lines.map(line => line.replace(/^[•\-\–—]\s*/, "").trim()).filter(Boolean);
+
+          return {
+            day: index + 1,
+            title: titleLine,
+            route: "",
+            date: "",
+            activities: bulletLines.length ? bulletLines : ["Detailed travel flow will be shared by the HKE team."]
+          };
+        });
+      }
+
+      async function detectCurrencyInfo() {
+        try {
+          const res = await fetch("https://ipapi.co/json/");
+          const data = await res.json();
+
+          if (data && data.country_code && data.country_code !== "IN") {
+            let usdRate = 0.012;
+            try {
+              const fxRes = await fetch("https://open.er-api.com/v6/latest/INR");
+              const fxData = await fxRes.json();
+              if (fxData && fxData.rates && fxData.rates.USD) {
+                usdRate = Number(fxData.rates.USD) || 0.012;
+              }
+            } catch (_) {}
+
+            return {
+              countryCode: data.country_code,
+              currency: "USD",
+              symbol: "$",
+              rate: usdRate,
+              label: `Prices shown in USD for international visitors`
+            };
+          }
+
+          return {
+            countryCode: "IN",
+            currency: "INR",
+            symbol: "₹",
+            rate: 1,
+            label: "Prices shown in INR for India"
+          };
+        } catch (_) {
+          return {
+            countryCode: "IN",
+            currency: "INR",
+            symbol: "₹",
+            rate: 1,
+            label: "Prices shown in INR"
+          };
+        }
+      }
+
+      function calculateFinalPrice(data) {
+        const customer = data.customer || {};
+
+        const days = Math.max(1, Number(customer.days || 1));
+        const rooms = Math.max(1, Number(customer.rooms || 1));
+
+        const vehicleRates = {
+          "No Vehicle": 0,
+          "Swift": 4000,
+          "Ertiga": 4500,
+          "Crysta": 7000,
+          "Traveller": 7000,
+          "Urbania": 8000,
+          "Royal Enfield Himalayan": 5000
+        };
+
+        const hotelRates = {
+          "No Hotel": 0,
+          "Economy": 3500,
+          "Standard": 7000,
+          "Premium": 10000
+        };
+
+        const profitRates = {
+          "Economy": 10000,
+          "Standard": 15000,
+          "Premium": 20000
+        };
+
+        const vehicleCost = (vehicleRates[customer.vehicle] || 0) * days;
+        const hotelCost = (hotelRates[customer.hotelClass] || 0) * days * rooms;
+        const foodCost = customer.needFood ? (1200 * days) : 0;
+        const guideCost = customer.guide === "With Guide" ? (1300 * days) : 0;
+        const profitCost = profitRates[customer.budget] || 15000;
+
+        const totalInINR = vehicleCost + hotelCost + foodCost + guideCost + profitCost;
+        const advanceInINR = Math.ceil(totalInINR * 0.20);
+
+        return { totalInINR, advanceInINR };
+      }
+
+      function convertAmount(inrAmount, currencyInfo = detectedCurrency) {
+        if (currencyInfo.currency === "INR") return Math.round(inrAmount);
+        return Math.round(Number(inrAmount || 0) * Number(currencyInfo.rate || 1));
+      }
+
+      function buildWhatsAppUrl(data, pricing, currencyInfo) {
+        const c = data.customer || {};
+        const places = (c.places || []).join(", ");
+
+        const finalShown = formatMoney(convertAmount(pricing.totalInINR, currencyInfo), currencyInfo);
+        const advanceShown = formatMoney(convertAmount(pricing.advanceInINR, currencyInfo), currencyInfo);
+
+        const msg =
+          `Hello Himalayan Kerala Expeditions,%0A%0A` +
+          `I want to continue with this booking.%0A%0A` +
+          `Name: ${encodeURIComponent(c.name || "")}%0A` +
+          `Mobile: ${encodeURIComponent(c.phone || "")}%0A` +
+          `Destination: ${encodeURIComponent(c.destination || "")}%0A` +
+          `Travel Dates: ${encodeURIComponent(c.startDate || "")} to ${encodeURIComponent(c.endDate || "")}%0A` +
+          `Travellers: ${encodeURIComponent(String(c.travellers || ""))}%0A` +
+          `Rooms: ${encodeURIComponent(String(c.rooms || ""))}%0A` +
+          `Vehicle: ${encodeURIComponent(c.vehicle || "")}%0A` +
+          `Hotel: ${encodeURIComponent(c.hotelClass || "")}%0A` +
+          `Places: ${encodeURIComponent(places)}%0A` +
+          `Final Package Price: ${encodeURIComponent(finalShown)}%0A` +
+          `Advance Amount: ${encodeURIComponent(advanceShown)}%0A` +
+          `Currency: ${encodeURIComponent(currencyInfo.currency)}%0A%0A` +
+          `Please assist me with booking confirmation.`;
+
+        return `https://wa.me/${COMPANY_PHONE}?text=${msg}`;
+      }
+
+      function renderDayWise(days) {
+        const acc = $("itAccordion");
+        if (!acc) return;
+
+        acc.innerHTML = days.map((day, idx) => `
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="heading${idx}">
+              <button class="accordion-button ${idx === 0 ? "" : "collapsed"}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse${idx}"
+                aria-expanded="${idx === 0 ? "true" : "false"}" aria-controls="collapse${idx}">
+                Day ${escapeHTML(day.day || idx + 1)} - ${escapeHTML(day.title || "")}
+              </button>
+            </h2>
+            <div id="collapse${idx}" class="accordion-collapse collapse ${idx === 0 ? "show" : ""}" aria-labelledby="heading${idx}">
+              <div class="accordion-body">
+                ${day.route ? `<div style="color:rgba(240,208,138,.9);font-weight:700;margin-bottom:8px;">${escapeHTML(day.route)}</div>` : ""}
+                ${(day.activities || []).length
+                  ? `<ul style="margin:0;padding-left:18px;">${day.activities.map(a => `<li>${escapeHTML(a)}</li>`).join("")}</ul>`
+                  : `<div>Detailed plan available on request.</div>`
+                }
+              </div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      async function render() {
+        const raw = localStorage.getItem("hkeLatestTripPlan");
+        const data = safeJSON(raw);
+
+        if (!data || !data.customer) {
+          $("noData").style.display = "block";
+          $("content").style.display = "none";
+          return;
+        }
+
+        detectedCurrency = await detectCurrencyInfo();
+
+        const customer = data.customer || {};
+        const itinerary = data.itinerary || {};
+        const days = Array.isArray(itinerary.days) && itinerary.days.length
+          ? itinerary.days
+          : parseItineraryTextToDays(itinerary.text || itinerary.raw || "");
+
+        const pricing = calculateFinalPrice(data);
+        const shownFinal = convertAmount(pricing.totalInINR, detectedCurrency);
+        const shownAdvance = convertAmount(pricing.advanceInINR, detectedCurrency);
+
+        $("noData").style.display = "none";
+        $("content").style.display = "block";
+
+        $("pills").innerHTML = `
+          <div class="pill">${escapeHTML(customer.destination || "Trip")}</div>
+          <div class="pill">${escapeHTML(String(customer.days || "-"))} Days</div>
+          <div class="pill">${escapeHTML(String(customer.travellers || "-"))} Travellers</div>
+          <div class="pill">${escapeHTML(String(customer.rooms || "-"))} Rooms</div>
+        `;
+
+        $("cust").innerHTML = `
+          <div><strong>Name:</strong> ${escapeHTML(customer.name || "-")}</div>
+          <div><strong>Mobile:</strong> ${escapeHTML(customer.phone || "-")}</div>
+          <div><strong>Email:</strong> ${escapeHTML(customer.email || "-")}</div>
+        `;
+
+        $("route").innerHTML = `
+          <div><strong>From:</strong> ${escapeHTML(customer.fromLocation || "-")}</div>
+          <div><strong>Destination:</strong> ${escapeHTML(customer.destination || "-")}</div>
+          <div><strong>End Point:</strong> ${escapeHTML(customer.endPoint || "-")}</div>
+          <div><strong>Travel Dates:</strong> ${escapeHTML(customer.startDate || "-")} to ${escapeHTML(customer.endDate || "-")}</div>
+          <div><strong>Places:</strong> ${escapeHTML((customer.places || []).join(", ") || "-")}</div>
+        `;
+
+        renderDayWise(days);
+
+        $("finalPrice").textContent = formatMoney(shownFinal, detectedCurrency);
+        $("advancePrice").textContent = formatMoney(shownAdvance, detectedCurrency);
+
+        $("miniVehicle").textContent = customer.vehicle || "—";
+        $("miniHotel").textContent = customer.hotelClass || "—";
+        $("miniFood").textContent = customer.needFood ? (customer.foodPreference || "Included") : "Not Included";
+        $("miniGuide").textContent = customer.guide || "—";
+
+        $("currencyBadge").style.display = "inline-flex";
+        $("currencyBadge").textContent = detectedCurrency.label;
+
+        const waUrl = buildWhatsAppUrl(data, pricing, detectedCurrency);
+        $("chatBtn").href = waUrl;
+        $("topChat").href = waUrl;
+
+        $("payBtn").addEventListener("click", () => {
+          $("successBox").style.display = "none";
+          $("errorBox").style.display = "none";
+
+          if (RAZORPAY_KEY_ID === "YOUR_RAZORPAY_KEY_ID") {
+            $("errorBox").textContent = "Please add your Razorpay Key ID inside book.html before using live payment.";
+            $("errorBox").style.display = "block";
+            return;
+          }
+
+          const paymentAmount = shownAdvance * 100;
+          const paymentCurrency = detectedCurrency.currency;
+
+          const options = {
+            key: RAZORPAY_KEY_ID,
+            amount: paymentAmount,
+            currency: paymentCurrency,
+            name: "Himalayan Kerala Expeditions",
+            description: "Advance payment for trip booking",
+            image: "media/logo.png",
+            handler: function (response) {
+              const bookingRecord = {
+                customer,
+                itinerary,
+                pricing: {
+                  ...pricing,
+                  displayedFinal: shownFinal,
+                  displayedAdvance: shownAdvance,
+                  displayedCurrency: detectedCurrency.currency,
+                  displayedSymbol: detectedCurrency.symbol,
+                  exchangeRateUsed: detectedCurrency.rate
+                },
+                payment: {
+                  status: "success",
+                  paymentId: response.razorpay_payment_id || "",
+                  paidAmount: shownAdvance,
+                  paidAt: new Date().toISOString(),
+                  currency: paymentCurrency
+                }
+              };
+
+              localStorage.setItem("hkeLastConfirmedBooking", JSON.stringify(bookingRecord));
+              localStorage.setItem("hkeLastPaymentSuccess", JSON.stringify(bookingRecord));
+
+              $("successBox").innerHTML =
+                `Payment successful. Payment ID: ${escapeHTML(response.razorpay_payment_id || "")}. ` +
+                `Your booking slot has been reserved.`;
+              $("successBox").style.display = "block";
+
+              setTimeout(() => {
+                window.location.href = "payment-confirmation.html";
+              }, 1200);
+            },
+            prefill: {
+              name: customer.name || "",
+              email: customer.email || "",
+              contact: customer.phone || ""
+            },
+            theme: {
+              color: "#D9B25F"
+            },
+            modal: {
+              ondismiss: function () {
+                $("errorBox").textContent = "Payment window closed before completion.";
+                $("errorBox").style.display = "block";
+              }
+            }
+          };
+
+          try {
+            const rzp = new Razorpay(options);
+            rzp.open();
+          } catch (err) {
+            $("errorBox").textContent = err?.message || "Unable to open payment window.";
+            $("errorBox").style.display = "block";
+          }
+        });
+      }
+
+      render();
+    })();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

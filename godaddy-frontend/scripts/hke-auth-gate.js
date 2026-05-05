@@ -19,6 +19,9 @@
   var LEGACY_USER_PHONE_KEY = "user_phone";
   var LEGACY_USER_NAME_KEY = "user_name";
   var LEGACY_USER_EMAIL_KEY = "user_email";
+  var pendingAction = null;
+  var authOverlayEl = null;
+  var overlayStyleInjected = false;
 
   var PROTECTED_PAGES = {
     "ai-planner.html": true,
@@ -30,7 +33,11 @@
     "pilgrimage.html": true,
     "pilgrimage-booking.html": true,
     "itinerary-result.html": true,
-    "finalize.html": true
+    "finalize.html": true,
+    "kerala.html": true,
+    "manali.html": true,
+    "kashmir.html": true,
+    "leh-ladakh.html": true
   };
 
   function getPageName() {
@@ -143,12 +150,6 @@
     return raw;
   }
 
-  function redirectToLogin(returnUrl) {
-    var target = resolveReturnUrl(returnUrl) || getCurrentRelativeUrl();
-    setReturnUrl(target);
-    window.location.href = "login.html?returnUrl=" + encodeURIComponent(target);
-  }
-
   function saveCustomerLogin(phone, extras) {
     var normalized = normalizePhone(phone);
     if (!normalized) return "";
@@ -185,9 +186,17 @@
     ].forEach(function (key) {
       window.localStorage.removeItem(key);
     });
+    pendingAction = null;
+    syncProtectedPageState();
   }
 
   function goAfterLogin(fallbackUrl) {
+    if (pendingAction && typeof pendingAction.onSuccess === "function") {
+      var action = pendingAction;
+      pendingAction = null;
+      action.onSuccess();
+      return;
+    }
     var target = resolveReturnUrl(consumeReturnUrl()) || resolveReturnUrl(fallbackUrl) || "my-orders.html";
     window.location.href = target;
   }
@@ -221,10 +230,133 @@
     });
   }
 
+  function ensureOverlayStyle() {
+    if (overlayStyleInjected) return;
+    overlayStyleInjected = true;
+
+    var styleEl = document.createElement("style");
+    styleEl.id = "hkeAuthGateStyles";
+    styleEl.textContent = [
+      "#hkeAuthBlocker {",
+      "  position: fixed;",
+      "  inset: 0;",
+      "  z-index: 1050;",
+      "  display: none;",
+      "  align-items: center;",
+      "  justify-content: center;",
+      "  padding: 24px;",
+      "  background: rgba(4, 8, 14, 0.58);",
+      "  backdrop-filter: blur(8px);",
+      "}",
+      "#hkeAuthBlocker.is-open { display: flex; }",
+      "#hkeAuthBlocker .hke-auth-card {",
+      "  width: min(420px, 92vw);",
+      "  border-radius: 24px;",
+      "  padding: 24px;",
+      "  background: rgba(10, 12, 16, 0.94);",
+      "  border: 1px solid rgba(255,255,255,.12);",
+      "  box-shadow: 0 24px 60px rgba(0,0,0,.42);",
+      "  color: #EAEFF7;",
+      "  text-align: center;",
+      "}",
+      "#hkeAuthBlocker .hke-auth-title {",
+      "  margin: 0 0 10px;",
+      "  font-size: 1.35rem;",
+      "  font-weight: 800;",
+      "}",
+      "#hkeAuthBlocker .hke-auth-copy {",
+      "  margin: 0;",
+      "  color: rgba(234,239,247,.76);",
+      "  line-height: 1.7;",
+      "}",
+      "#hkeAuthBlocker .hke-auth-actions {",
+      "  margin-top: 16px;",
+      "  display: flex;",
+      "  justify-content: center;",
+      "  gap: 10px;",
+      "  flex-wrap: wrap;",
+      "}",
+      "#hkeAuthBlocker .hke-auth-login-btn {",
+      "  border: none;",
+      "  border-radius: 999px;",
+      "  padding: 12px 20px;",
+      "  font-weight: 800;",
+      "  color: #111;",
+      "  background: linear-gradient(135deg, #D9B25F, #F0D08A);",
+      "}",
+      "#hkeAuthGateModal.manual-open {",
+      "  display: block;",
+      "  background: rgba(4,8,14,.62);",
+      "}",
+      "#hkeAuthGateModal.manual-open .modal-dialog {",
+      "  margin-top: min(14vh, 88px);",
+      "}",
+      "body.hke-auth-modal-open { overflow: hidden; }"
+    ].join("");
+    document.head.appendChild(styleEl);
+  }
+
+  function ensureAuthOverlay() {
+    ensureOverlayStyle();
+    if (authOverlayEl) return authOverlayEl;
+
+    authOverlayEl = document.getElementById("hkeAuthBlocker");
+    if (authOverlayEl) return authOverlayEl;
+
+    authOverlayEl = document.createElement("div");
+    authOverlayEl.id = "hkeAuthBlocker";
+    authOverlayEl.setAttribute("aria-hidden", "true");
+    authOverlayEl.innerHTML = [
+      '<div class="hke-auth-card" role="dialog" aria-modal="true" aria-labelledby="hkeAuthBlockerTitle">',
+      '  <div class="hke-auth-title" id="hkeAuthBlockerTitle">Please login to continue</div>',
+      '  <p class="hke-auth-copy">Verify your mobile number with OTP to use booking, itinerary, payment, and customer trip features.</p>',
+      '  <div class="hke-auth-actions">',
+      '    <button type="button" class="hke-auth-login-btn" data-hke-auth-overlay-login="true">Login with OTP</button>',
+      "  </div>",
+      "</div>"
+    ].join("");
+    document.body.appendChild(authOverlayEl);
+
+    var loginBtn = authOverlayEl.querySelector("[data-hke-auth-overlay-login='true']");
+    if (loginBtn) {
+      loginBtn.addEventListener("click", function () {
+        openLoginModal(getCurrentRelativeUrl());
+      });
+    }
+
+    return authOverlayEl;
+  }
+
+  function isProtectedPage(pageName) {
+    return !!PROTECTED_PAGES[pageName || getPageName()];
+  }
+
+  function showAuthOverlay() {
+    var overlay = ensureAuthOverlay();
+    overlay.classList.add("is-open");
+    overlay.setAttribute("aria-hidden", "false");
+  }
+
+  function hideAuthOverlay() {
+    var overlay = ensureAuthOverlay();
+    overlay.classList.remove("is-open");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function syncProtectedPageState() {
+    if (!isProtectedPage()) return;
+    if (isLoggedIn()) {
+      hideAuthOverlay();
+      return;
+    }
+    showAuthOverlay();
+  }
+
   function getModalRefs() {
     var existingModal = document.getElementById("otpLoginModal");
     if (existingModal) {
       return {
+        rootEl: existingModal,
         modalEl: existingModal,
         phoneEl: document.getElementById("otpPhone"),
         otpEl: document.getElementById("otpCode"),
@@ -237,6 +369,7 @@
 
     var injected = document.getElementById("hkeAuthGateModal");
     if (!injected) {
+      ensureOverlayStyle();
       injected = document.createElement("div");
       injected.innerHTML = [
         '<div class="modal fade" id="hkeAuthGateModal" tabindex="-1" aria-hidden="true">',
@@ -276,6 +409,7 @@
     }
 
     return {
+      rootEl: document.getElementById("hkeAuthGateModal"),
       modalEl: document.getElementById("hkeAuthGateModal"),
       phoneEl: document.getElementById("hkeAuthPhone"),
       otpEl: document.getElementById("hkeAuthOtpCode"),
@@ -286,8 +420,59 @@
     };
   }
 
+  function getStandaloneLoginRefs() {
+    var phoneEl = document.getElementById("phone");
+    var sendBtn = document.getElementById("sendOtpBtn");
+    var verifyBtn = document.getElementById("verifyOtpBtn");
+    if (!phoneEl || !sendBtn || !verifyBtn) return null;
+
+    return {
+      rootEl: document.querySelector(".card") || document.body,
+      modalEl: null,
+      phoneEl: phoneEl,
+      otpEl: document.getElementById("otp"),
+      sendBtn: sendBtn,
+      verifyBtn: verifyBtn,
+      msgEl: document.getElementById("msg"),
+      ordersEl: document.getElementById("openOrdersBtn"),
+      successRedirectUrl: "my-orders.html"
+    };
+  }
+
+  function showModalElement(modalEl) {
+    if (!modalEl) return;
+    if (window.bootstrap && window.bootstrap.Modal) {
+      window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+    modalEl.style.display = "block";
+    modalEl.removeAttribute("aria-hidden");
+    modalEl.setAttribute("aria-modal", "true");
+    modalEl.classList.add("show", "manual-open");
+    document.body.classList.add("hke-auth-modal-open");
+  }
+
+  function hideModalElement(modalEl) {
+    if (!modalEl) return;
+    if (window.bootstrap && window.bootstrap.Modal) {
+      var instance = window.bootstrap.Modal.getInstance(modalEl);
+      if (instance) {
+        instance.hide();
+        return;
+      }
+    }
+    modalEl.classList.remove("show", "manual-open");
+    modalEl.style.display = "none";
+    modalEl.setAttribute("aria-hidden", "true");
+    modalEl.removeAttribute("aria-modal");
+    document.body.classList.remove("hke-auth-modal-open");
+  }
+
   function setModalMsg(refs, text, isErr) {
     if (!refs.msgEl) return;
+    if (refs.msgEl.classList && refs.msgEl.classList.contains("msg")) {
+      refs.msgEl.className = text ? "msg " + (isErr ? "err" : "ok") : "msg";
+    }
     refs.msgEl.textContent = text;
     refs.msgEl.style.color = isErr ? "#ffd2d2" : "#d8ffe7";
   }
@@ -303,6 +488,15 @@
       button.disabled = disabled;
       button.textContent = (labelMap && labelMap[button.id]) || defaultText;
     });
+  }
+
+  function getResponseText(data) {
+    if (!data) return "";
+    if (typeof data.detail === "string" && data.detail.trim()) return data.detail.trim();
+    if (typeof data.message === "string" && data.message.trim()) return data.message.trim();
+    if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
+    if (typeof data.raw === "string" && data.raw.trim()) return data.raw.trim();
+    return "";
   }
 
   async function postJSON(url, body) {
@@ -337,17 +531,17 @@
       data = { raw: txt };
     }
 
-    if (!res.ok) {
-      var msg = (data && (data.detail || data.message)) || txt || "Request failed";
-      throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
-    }
-
-    return data;
+    return {
+      res: res,
+      data: data,
+      text: txt
+    };
   }
 
   function bindModal(refs) {
-    if (!refs.modalEl || refs.modalEl.dataset.hkeAuthBound === "true") return;
-    refs.modalEl.dataset.hkeAuthBound = "true";
+    var bindRoot = refs && (refs.rootEl || refs.modalEl);
+    if (!bindRoot || bindRoot.dataset.hkeAuthBound === "true") return;
+    bindRoot.dataset.hkeAuthBound = "true";
 
     if (refs.sendBtn) {
       refs.sendBtn.addEventListener("click", async function () {
@@ -366,10 +560,24 @@
           }
 
           setModalMsg(refs, "Sending OTP...", false);
-          await postJSON(SEND_OTP_API, { phone: phone, mobile: phone });
-          setModalMsg(refs, "OTP sent successfully to your mobile number.", false);
+          var sendResult = await postJSON(SEND_OTP_API, { phone: phone, mobile: phone });
+          var sendData = sendResult.data || {};
+          var sendMessage = getResponseText(sendData);
+          console.log("OTP send response", sendResult.res.status, sendData);
+          var sendSucceeded =
+            sendResult.res.ok === true ||
+            sendData.ok === true ||
+            /otp sent/i.test(sendMessage);
+
+          if (!sendSucceeded) {
+            throw new Error(sendMessage || "Unable to send OTP. Please try again later.");
+          }
+
+          setModalMsg(refs, "OTP sent successfully. Please enter the OTP.", false);
+          if (refs.verifyBtn) refs.verifyBtn.disabled = false;
+          if (refs.otpEl && typeof refs.otpEl.focus === "function") refs.otpEl.focus();
         } catch (err) {
-          setModalMsg(refs, err.message || "Unable to send OTP.", true);
+          setModalMsg(refs, err.message || "Unable to send OTP. Please try again later.", true);
         } finally {
           setButtonsBusy(refs, false);
         }
@@ -398,16 +606,25 @@
           }
 
           setModalMsg(refs, "Verifying OTP...", false);
-          await postJSON(VERIFY_OTP_API, { phone: phone, mobile: phone, otp: otp });
+          var verifyResult = await postJSON(VERIFY_OTP_API, { phone: phone, mobile: phone, otp: otp });
+          var verifyData = verifyResult.data || {};
+          var verifyMessage = getResponseText(verifyData);
+          var verifySucceeded =
+            (verifyResult.res.ok === true && verifyData.ok === true) ||
+            verifyData.verified === true;
+
+          if (!verifySucceeded) {
+            throw new Error(verifyMessage || "OTP verification failed.");
+          }
+
           saveCustomerLogin(phone);
-          setModalMsg(refs, "Login successful. Redirecting...", false);
+          syncAuthUi();
+          syncProtectedPageState();
+          setModalMsg(refs, "Login successful. Continuing...", false);
 
           window.setTimeout(function () {
-            if (window.bootstrap && window.bootstrap.Modal) {
-              var instance = window.bootstrap.Modal.getOrCreateInstance(refs.modalEl);
-              instance.hide();
-            }
-            goAfterLogin(getCurrentRelativeUrl());
+            hideModalElement(refs.modalEl);
+            goAfterLogin(refs.successRedirectUrl || getCurrentRelativeUrl());
           }, 500);
         } catch (err) {
           setModalMsg(refs, err.message || "OTP verification failed.", true);
@@ -419,7 +636,13 @@
 
     if (refs.ordersEl) {
       refs.ordersEl.addEventListener("click", function (event) {
-        if (isLoggedIn()) return;
+        if (isLoggedIn()) {
+          if (!refs.ordersEl.getAttribute("href")) {
+            window.location.href = "my-orders.html";
+            event.preventDefault();
+          }
+          return;
+        }
         event.preventDefault();
         setReturnUrl("my-orders.html");
         setModalMsg(refs, "Please verify OTP first.", true);
@@ -430,14 +653,10 @@
   function openLoginModal(returnUrl) {
     if (returnUrl) setReturnUrl(returnUrl);
 
-    if (!window.bootstrap || !window.bootstrap.Modal) {
-      redirectToLogin(returnUrl || getCurrentRelativeUrl());
-      return;
-    }
-
     var refs = getModalRefs();
     bindModal(refs);
     setPhoneFieldValue();
+    syncProtectedPageState();
 
     var savedPhone = window.localStorage.getItem(PHONE_KEY);
     if (refs.phoneEl && savedPhone && !String(refs.phoneEl.value || "").trim()) {
@@ -445,7 +664,7 @@
     }
 
     setModalMsg(refs, "", false);
-    window.bootstrap.Modal.getOrCreateInstance(refs.modalEl).show();
+    showModalElement(refs.modalEl);
   }
 
   function requireLogin(opts) {
@@ -460,11 +679,12 @@
       return true;
     }
 
-    if (options.useRedirect) {
-      redirectToLogin(returnUrl);
-    } else {
-      openLoginModal(returnUrl);
-    }
+    pendingAction = {
+      onSuccess: typeof options.onSuccess === "function" ? options.onSuccess : null,
+      returnUrl: returnUrl
+    };
+
+    openLoginModal(returnUrl);
     return false;
   }
 
@@ -551,11 +771,6 @@
     });
   }
 
-  if (PROTECTED_PAGES[getPageName()] && !isLoggedIn() && getPageName() !== "login.html") {
-    redirectToLogin(getCurrentRelativeUrl());
-    return;
-  }
-
   window.HKEAuthGate = {
     LOGGED_IN_KEY: LOGGED_IN_KEY,
     PHONE_KEY: PHONE_KEY,
@@ -570,7 +785,9 @@
     goAfterLogin: goAfterLogin,
     openLoginModal: openLoginModal,
     requireLogin: requireLogin,
-    getStoredReturnUrl: getStoredReturnUrl
+    syncAuthUi: syncAuthUi,
+    getStoredReturnUrl: getStoredReturnUrl,
+    syncProtectedPageState: syncProtectedPageState
   };
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -578,10 +795,23 @@
     wireLoginButtons();
     setPhoneFieldValue();
     syncAuthUi();
+    ensureAuthOverlay();
+    syncProtectedPageState();
 
     var existingModal = document.getElementById("otpLoginModal");
     if (existingModal) {
       bindModal(getModalRefs());
+    }
+
+    var standaloneLoginRefs = getStandaloneLoginRefs();
+    if (standaloneLoginRefs) {
+      bindModal(standaloneLoginRefs);
+    }
+
+    if (isProtectedPage() && !isLoggedIn() && getPageName() !== "login.html") {
+      window.setTimeout(function () {
+        openLoginModal(getCurrentRelativeUrl());
+      }, 120);
     }
   });
 })(window, document);

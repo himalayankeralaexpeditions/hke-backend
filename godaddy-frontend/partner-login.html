@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE Partner Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0B0F18" />
+  <link rel="icon" type="image/png" href="media/logo.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="css/partner-portal.css" rel="stylesheet" />
+
+<link rel="stylesheet" href="css/hke-polish.css">
+</head>
+<body class="partner-body" data-page="partner-login">
+  <div class="portal-shell">
+    <header class="portal-topbar">
+      <div class="inner">
+        <a class="portal-brand" href="index.html" aria-label="HKE home">
+          <img src="media/logo.png" alt="HKE Logo" width="550" height="550" />
+          <div>
+            <p class="line1">Himalayan Kerala Expeditions</p>
+            <p class="line2">Partner Access Portal</p>
+          </div>
+        </a>
+        <div class="portal-topbar-actions">
+          <a class="portal-btn portal-btn-ghost" href="index.html">Back to Home</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="login-shell">
+      <section class="portal-card login-card">
+        <div class="portal-pill">Hotels | Drivers | Guides</div>
+        <h1 class="section-title" style="margin-top:16px;">Partner Login</h1>
+        <p class="section-subtitle">
+          Access your HKE partner dashboard to manage availability, submit rates, and keep your inventory ready for verified itinerary matching.
+        </p>
+
+        <div class="auth-toggle" aria-label="Authentication mode">
+          <button id="loginTab" class="toggle-chip active" type="button">Login</button>
+          <button id="registerTab" class="toggle-chip" type="button">Register</button>
+        </div>
+
+        <div id="loginPanel" class="partner-form">
+          <form id="loginForm">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="loginMobile">Mobile Number</label>
+                <input id="loginMobile" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" required />
+              </div>
+              <div class="field full">
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" type="password" placeholder="Enter your password" required />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="portal-btn portal-btn-primary" type="submit">Login</button>
+              <button class="portal-btn portal-btn-ghost" type="button" id="registerSwitcher">Register</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="registerPanel" class="partner-form" style="display:none;">
+          <form id="registerForm">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="partnerType">Partner Type</label>
+                <select id="partnerType" required>
+                  <option value="Hotel">Hotel</option>
+                  <option value="Driver">Driver</option>
+                  <option value="Guide">Guide</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="businessName">Business Name</label>
+                <input id="businessName" type="text" placeholder="Business or service name" required />
+              </div>
+              <div class="field">
+                <label for="contactPerson">Contact Person</label>
+                <input id="contactPerson" type="text" placeholder="Primary contact person" required />
+              </div>
+              <div class="field">
+                <label for="registerMobile">Mobile</label>
+                <input id="registerMobile" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" required />
+              </div>
+              <div class="field">
+                <label for="registerEmail">Email</label>
+                <input id="registerEmail" type="email" placeholder="name@example.com" required />
+              </div>
+              <div class="field">
+                <label for="registerPassword">Password</label>
+                <input id="registerPassword" type="password" placeholder="Create a password" required />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="portal-btn portal-btn-primary" type="submit">Register</button>
+              <button class="portal-btn portal-btn-ghost" type="button" id="loginSwitcher">Login</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="authMsg" class="msg-box" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <script defer src="scripts/partner-portal.js"></script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

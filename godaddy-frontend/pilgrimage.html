@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Pilgrimage AI Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --text:#EAEFF7;
+      --muted:rgba(234,239,247,.72);
+      --panel:rgba(255,255,255,.06);
+      --border:rgba(255,255,255,.12);
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      overflow-x:hidden;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.78), rgba(0,0,0,.35)),
+        url("media/religious.jpg") center/cover no-repeat fixed;
+      position:relative;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(900px 520px at 18% 18%, rgba(217,178,95,.18), transparent 60%),
+        radial-gradient(900px 520px at 85% 20%, rgba(240,208,138,.10), transparent 58%),
+        radial-gradient(900px 520px at 50% 92%, rgba(255,255,255,.06), transparent 60%),
+        linear-gradient(to bottom, rgba(0,0,0,.42), rgba(0,0,0,.74));
+      z-index:0;
+    }
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:20;
+      padding:14px 0;
+      backdrop-filter:blur(14px);
+      background:rgba(10,12,16,.55);
+      border-bottom:1px solid rgba(255,255,255,.10);
+      box-shadow:0 14px 40px rgba(0,0,0,.35);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .brand img{
+      height:46px;
+      background:#fff;
+      padding:6px;
+      border-radius:14px;
+      box-shadow:0 0 14px rgba(217,178,95,.35);
+    }
+
+    .brand .t1{
+      font-weight:700;
+      line-height:1.15;
+      margin:0;
+    }
+
+    .brand .t2{
+      font-weight:500;
+      font-size:.95rem;
+      margin:0;
+      color:rgba(240,208,138,.85);
+    }
+
+    .btn-gold{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      border:none;
+      color:#0b0f18;
+      padding:12px 18px;
+      border-radius:999px;
+      font-weight:700;
+      text-decoration:none;
+      box-shadow:0 18px 35px rgba(217,178,95,.18);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      cursor:pointer;
+    }
+
+    .btn-ghost{
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.16);
+      color:var(--text);
+      font-weight:600;
+      border-radius:999px;
+      padding:12px 16px;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      cursor:pointer;
+    }
+
+    .wrap{
+      position:relative;
+      z-index:2;
+      padding:26px 12px 44px;
+    }
+
+    .panel{
+      max-width:1120px;
+      margin:0 auto;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(14px);
+      padding:22px;
+    }
+
+    h1{
+      font-weight:800;
+      font-size:1.9rem;
+      margin:0;
+    }
+
+    .subline{
+      margin-top:8px;
+      color:var(--muted);
+      font-weight:450;
+      line-height:1.7;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+      margin-top:16px;
+    }
+
+    @media (max-width: 992px){
+      .grid{ grid-template-columns:repeat(2,1fr); }
+    }
+
+    @media (max-width: 576px){
+      .grid{ grid-template-columns:1fr; }
+    }
+
+    label{
+      font-weight:600;
+      margin-bottom:6px;
+      display:block;
+      color:rgba(234,239,247,.92);
+    }
+
+    input,select,textarea{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      background:rgba(0,0,0,.28);
+      border:1px solid rgba(255,255,255,.14);
+      color:var(--text);
+      outline:none;
+      font-weight:500;
+    }
+
+    input::placeholder,textarea::placeholder{
+      color:rgba(234,239,247,.55);
+    }
+
+    select option{
+      color:#111;
+    }
+
+    .style-options{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:4px;
+    }
+
+    .style-option{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:9px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      font-weight:500;
+    }
+
+    .style-option input{
+      width:auto;
+      margin:0;
+      accent-color:#D9B25F;
+    }
+
+    #placesBtn{
+      width:100%;
+      text-align:left;
+      background:rgba(0,0,0,.28);
+      border:1px solid rgba(217,178,95,.30);
+      color:var(--text);
+      padding:12px 12px;
+      border-radius:14px;
+      font-weight:600;
+    }
+
+    .chips{
+      margin-top:8px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(217,178,95,.10);
+      border:1px solid rgba(217,178,95,.20);
+      font-weight:600;
+    }
+
+    .chip button{
+      border:none;
+      background:transparent;
+      color:var(--text);
+      font-weight:800;
+      cursor:pointer;
+      padding:0;
+      line-height:1;
+    }
+
+    .msg{
+      margin-top:12px;
+      font-weight:600;
+    }
+
+    .msg.ok{ color:#b9ffcd; }
+    .msg.err{ color:#ffd1d1; }
+
+    .modal-content{
+      background:rgba(10,12,16,.95);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;
+      backdrop-filter:blur(14px);
+    }
+
+    .placeRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.06);
+      margin-bottom:8px;
+      cursor:pointer;
+      user-select:none;
+      font-weight:500;
+    }
+
+    .placeRow:hover{
+      border-color:rgba(217,178,95,.30);
+      background:rgba(217,178,95,.10);
+    }
+
+    .placeRow input[type="checkbox"]{
+      width:18px;
+      height:18px;
+      accent-color:#D9B25F;
+    }
+
+    .placeRow .place-name{
+      margin-left:auto;
+      font-weight:700;
+      opacity:.95;
+    }
+
+    .loading-overlay{
+      position:fixed;
+      inset:0;
+      z-index:9999;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      background:rgba(3,7,12,.74);
+      backdrop-filter:blur(10px);
+    }
+
+    .loading-card{
+      width:min(460px,92vw);
+      text-align:center;
+      padding:28px 24px;
+      border-radius:24px;
+      background:rgba(8,13,22,.94);
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow:0 20px 60px rgba(0,0,0,.45);
+    }
+
+    .loading-card h3{
+      margin:18px 0 10px;
+      color:#F0D08A;
+      font-size:1.5rem;
+      font-weight:800;
+    }
+
+    .loading-card p{
+      margin:0;
+      color:rgba(234,239,247,.78);
+      line-height:1.7;
+      font-size:.98rem;
+    }
+
+    .travel-loader{
+      position:relative;
+      width:92px;
+      height:92px;
+      margin:0 auto;
+    }
+
+    .loader-ring{
+      width:92px;
+      height:92px;
+      border-radius:50%;
+      border:4px solid rgba(217,178,95,.18);
+      border-top:4px solid #D9B25F;
+      border-right:4px solid #F0D08A;
+      animation:hkeSpin 1.1s linear infinite;
+      box-shadow:0 0 24px rgba(217,178,95,.18);
+    }
+
+    .loader-icon{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:2.2rem;
+      color:#F0D08A;
+      animation:hkeFloat 1.6s ease-in-out infinite;
+      font-weight:800;
+    }
+
+    @keyframes hkeSpin{
+      from{ transform:rotate(0deg); }
+      to{ transform:rotate(360deg); }
+    }
+
+    @keyframes hkeFloat{
+      0%,100%{ transform:translateY(0); }
+      50%{ transform:translateY(-4px); }
+    }
+  </style>
+
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/hke-polish.css">
+<script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+<script src="scripts/hke-dynamic-content.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="container d-flex justify-content-between align-items-center">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" width="550" height="550" decoding="async" />
+        <div>
+          <p class="t1">Himalayan Kerala Expeditions</p>
+          <p class="t2">We Plan. We Care.</p>
+        </div>
+      </div>
+      <a href="index.html" class="btn-ghost">← Back</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="panel">
+      <h1>Pilgrimage AI Planner</h1>
+      <div class="subline">
+        Choose religion, state, pilgrimage places, travel preferences and generate your complete pilgrimage journey plan.
+      </div>
+
+      <form id="plannerForm" class="mt-3" novalidate>
+        <div class="grid">
+          <div>
+            <label>Name *</label>
+            <input id="name" type="text" placeholder="Full name" required>
+          </div>
+
+          <div>
+            <label>Email *</label>
+            <input id="email" type="email" placeholder="you@example.com" required>
+          </div>
+
+          <div>
+            <label>Mobile *</label>
+            <input id="phone" type="tel" placeholder="10-digit number" maxlength="10" required>
+          </div>
+
+          <div>
+            <label>From where are you travelling? *</label>
+            <input id="fromLocation" type="text" placeholder="Example: Delhi / Kochi / Jammu" required>
+          </div>
+
+          <div>
+            <label>Religion Focus *</label>
+            <select id="religion" required>
+              <option value="">— Select —</option>
+              <option value="Hindu">Hindu</option>
+              <option value="Christian">Christian</option>
+            </select>
+          </div>
+
+          <div>
+            <label>State / Region *</label>
+            <select id="destinationState" required>
+              <option value="">— Select state —</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Trip End Point *</label>
+            <input id="endPoint" type="text" placeholder="Example: Jammu / Kochi / Dehradun" required>
+          </div>
+
+          <div>
+            <label>Start Date *</label>
+            <input id="startDate" type="date" required>
+          </div>
+
+          <div>
+            <label>Days *</label>
+            <input id="days" type="number" min="2" value="5" required>
+          </div>
+
+          <div>
+            <label>End Date (auto)</label>
+            <input id="endDate" type="date" readonly>
+          </div>
+
+          <div>
+            <label>Travellers</label>
+            <input id="travellers" type="number" min="1" value="2">
+          </div>
+
+          <div>
+            <label>Rooms</label>
+            <input id="rooms" type="number" min="1" value="1">
+          </div>
+
+          <div>
+            <label>Budget</label>
+            <select id="budget">
+              <option value="Budget">Budget</option>
+              <option value="Standard" selected>Standard</option>
+              <option value="Premium">Premium</option>
+              <option value="Luxury">Luxury</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Travel Type</label>
+            <select id="travelType">
+              <option value="Family">Family</option>
+              <option value="Couple">Couple</option>
+              <option value="Friends">Friends</option>
+              <option value="Solo">Solo</option>
+              <option value="Senior Citizen Group">Senior Citizen Group</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Hotel Category</label>
+            <select id="hotelClass">
+              <option value="Budget">Budget</option>
+              <option value="Standard" selected>Standard</option>
+              <option value="Premium">Premium</option>
+              <option value="Luxury">Luxury</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Vehicle</label>
+            <select id="vehicle">
+              <option value="No Cab">No Cab</option>
+              <option value="Sedan">Sedan</option>
+              <option value="SUV" selected>SUV</option>
+              <option value="Innova Crysta">Innova Crysta</option>
+              <option value="Tempo Traveller">Tempo Traveller</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Guide / Assistance</label>
+            <select id="guide">
+              <option value="Without Guide" selected>Without Guide</option>
+              <option value="With Guide">With Guide</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Need Food?</label>
+            <select id="needFood">
+              <option value="false">No</option>
+              <option value="true" selected>Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Food Preference</label>
+            <select id="foodPreference">
+              <option value="">Flexible</option>
+              <option value="Pure Veg">Pure Veg</option>
+              <option value="Veg">Veg</option>
+              <option value="Non-Veg">Non-Veg</option>
+            </select>
+          </div>
+
+          <div style="grid-column:1/-1;">
+            <label>Pilgrimage Travel Style</label>
+            <div class="style-options">
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Spiritual"> Spiritual</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Peaceful"> Peaceful</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Family Friendly"> Family Friendly</label>
+              <label class="style-option"><input type="checkbox" name="travelStyle" value="Comfort"> Comfort</label>
+            </div>
+          </div>
+
+          <div style="grid-column:1/-1;">
+            <label>Important Pilgrimage Places *</label>
+            <button type="button" id="placesBtn">Select pilgrimage places (click to choose)…</button>
+            <div id="chips" class="chips"></div>
+            <div id="placesErr" class="msg err" style="display:none;">Please select at least one pilgrimage place.</div>
+          </div>
+
+          <div style="grid-column:1/-1;">
+            <label>Special Requests / Notes</label>
+            <textarea id="notes" rows="2" placeholder="Example: senior citizen, pure veg, easy pacing, prayer-focused trip..."></textarea>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+          <button id="generateBtn" type="submit" class="btn-gold">Generate Pilgrimage Itinerary</button>
+          <button id="resetBtn" type="button" class="btn-ghost">Reset</button>
+        </div>
+
+        <div id="msg" class="msg"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="wrap pt-0">
+    <div class="panel">
+      <h2 style="font-weight:800;color:#F0D08A;margin:0 0 10px;">Featured Pilgrimage Packages</h2>
+      <div class="subline" style="margin-top:0;">Admin-managed pilgrimage packages will appear here when available. If none are configured, the planner above remains fully usable with the current static experience.</div>
+      <div id="hkeDynamicPilgrimagePackages" class="row g-3 mt-2"></div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="placesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header" style="border-color:rgba(255,255,255,.12);">
+          <h5 class="modal-title" style="font-weight:700;">Select Pilgrimage Places</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex gap-2">
+            <input id="placesSearch" type="text" class="form-control" placeholder="Search pilgrimage places...">
+            <button id="placesClearBtn" type="button" class="btn-ghost">Clear</button>
+          </div>
+          <div id="placesHint" class="mt-2" style="font-weight:600; opacity:.85;">
+            Select religion and state first to load pilgrimage places.
+          </div>
+          <div id="placesList" class="mt-3"></div>
+        </div>
+        <div class="modal-footer" style="border-color:rgba(255,255,255,.12);">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn-gold" data-bs-dismiss="modal">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+    <div class="loading-card">
+      <div class="travel-loader">
+        <div class="loader-ring"></div>
+        <div id="loaderSymbol" class="loader-icon">ॐ</div>
+      </div>
+      <h3>Preparing your pilgrimage itinerary</h3>
+      <p>Our planner is arranging your route, stay preference, day-wise movement and package details.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const API_BASE = "https://hke-backend.onrender.com";
+      const PILGRIMAGE_API = `${API_BASE}/api/pilgrimage/generate`;
+
+      const PILGRIMAGE_BY_RELIGION = {
+        Hindu: {
+          "Jammu & Kashmir": ["Vaishno Devi", "Shiv Khori", "Raghunath Temple Jammu", "Bahu Fort Temple"],
+          "Uttarakhand": ["Kedarnath", "Badrinath", "Haridwar", "Rishikesh", "Gangotri", "Yamunotri"],
+          "Himachal Pradesh": ["Jwala Ji", "Chamunda Devi", "Chintpurni", "Baijnath Temple", "Naina Devi"],
+          "Kerala": ["Sabarimala", "Guruvayur Temple", "Padmanabhaswamy Temple", "Chottanikkara Temple"],
+          "Tamil Nadu": ["Rameswaram", "Meenakshi Temple", "Kanyakumari Temple"],
+          "Karnataka": ["Dharmasthala", "Murudeshwar", "Kukke Subramanya", "Udupi Krishna Temple"],
+          "Maharashtra": ["Shirdi", "Trimbakeshwar", "Bhimashankar", "Siddhivinayak Temple"],
+          "Gujarat": ["Dwarka", "Somnath", "Ambaji Temple"],
+          "Madhya Pradesh": ["Mahakaleshwar", "Omkareshwar", "Chitrakoot"],
+          "Uttar Pradesh": ["Kashi Vishwanath", "Ayodhya Ram Mandir", "Mathura", "Vrindavan"]
+        },
+        Christian: {
+          "Kerala": ["Malayattoor Church", "Vallarpadam Basilica", "Arthunkal Church", "St. Alphonsa Shrine"],
+          "Tamil Nadu": ["Velankanni Basilica", "Santhome Basilica", "Poondi Madha Basilica"],
+          "Goa": ["Basilica of Bom Jesus", "Se Cathedral"],
+          "Karnataka": ["Infant Jesus Church Bangalore", "Milagres Church"],
+          "Maharashtra": ["Mount Mary Church", "St. Thomas Cathedral"],
+          "West Bengal": ["St. Pauls Cathedral", "Bandel Church"],
+          "Delhi": ["Sacred Heart Cathedral", "St. James Church"]
+        }
+      };
+
+      const $ = (id) => document.getElementById(id);
+
+      const religionEl = $("religion");
+      const destinationStateEl = $("destinationState");
+      const startDateEl = $("startDate");
+      const daysEl = $("days");
+      const endDateEl = $("endDate");
+      const chips = $("chips");
+      const placesBtn = $("placesBtn");
+      const placesErr = $("placesErr");
+      const placesList = $("placesList");
+      const placesHint = $("placesHint");
+      const placesSearch = $("placesSearch");
+      const msg = $("msg");
+      const form = $("plannerForm");
+      const loadingOverlay = $("loadingOverlay");
+      const loaderSymbol = $("loaderSymbol");
+
+      let selectedPlaces = [];
+
+      function safe(v) {
+        return String(v ?? "").trim();
+      }
+
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      function toISODate(d) {
+        return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+      }
+
+      function fromISODate(s) {
+        if (!s) return null;
+        const [y,m,d] = s.split("-").map(Number);
+        if (!y || !m || !d) return null;
+        return new Date(y, m - 1, d);
+      }
+
+      function addDaysISO(startISO, days) {
+        const d = fromISODate(startISO);
+        if (!d) return "";
+        d.setDate(d.getDate() + (Math.max(1, Number(days || 1)) - 1));
+        return toISODate(d);
+      }
+
+      function updateEndDate() {
+        endDateEl.value = addDaysISO(startDateEl.value, daysEl.value);
+      }
+
+      function setMsg(text, type="") {
+        msg.className = "msg " + type;
+        msg.textContent = text || "";
+      }
+
+      function updateLoaderIcon() {
+        const religion = safe(religionEl.value);
+        loaderSymbol.textContent = religion === "Christian" ? "✝" : "ॐ";
+      }
+
+      function showLoading(show) {
+        updateLoaderIcon();
+        loadingOverlay.style.display = show ? "flex" : "none";
+      }
+
+      function populateStates() {
+        destinationStateEl.innerHTML = `<option value="">— Select state —</option>`;
+        const religion = safe(religionEl.value);
+        if (!religion || !PILGRIMAGE_BY_RELIGION[religion]) return;
+
+        Object.keys(PILGRIMAGE_BY_RELIGION[religion]).forEach(state => {
+          const opt = document.createElement("option");
+          opt.value = state;
+          opt.textContent = state;
+          destinationStateEl.appendChild(opt);
+        });
+      }
+
+      function renderChips() {
+        chips.innerHTML = "";
+        selectedPlaces.forEach((place, i) => {
+          const chip = document.createElement("div");
+          chip.className = "chip";
+          chip.innerHTML = `<span>${place}</span><button type="button" data-index="${i}">×</button>`;
+          chips.appendChild(chip);
+        });
+
+        chips.querySelectorAll("button").forEach(btn => {
+          btn.addEventListener("click", () => {
+            selectedPlaces.splice(Number(btn.dataset.index), 1);
+            renderChips();
+          });
+        });
+
+        placesBtn.textContent = selectedPlaces.length
+          ? `Selected (${selectedPlaces.length}) pilgrimage place(s) — Click to edit`
+          : "Select pilgrimage places (click to choose)…";
+      }
+
+      function buildPlacesList() {
+        placesList.innerHTML = "";
+        const religion = safe(religionEl.value);
+        const state = safe(destinationStateEl.value);
+
+        if (!religion || !state) {
+          placesHint.textContent = "Select religion and state first to load pilgrimage places.";
+          return;
+        }
+
+        const places = PILGRIMAGE_BY_RELIGION[religion]?.[state] || [];
+        placesHint.textContent = `Showing ${religion} pilgrimage places for ${state}`;
+
+        places.forEach(place => {
+          const row = document.createElement("label");
+          row.className = "placeRow";
+          row.innerHTML = `
+            <input type="checkbox" value="${place}" ${selectedPlaces.includes(place) ? "checked" : ""}>
+            <span class="place-name">${place}</span>
+          `;
+          const checkbox = row.querySelector("input");
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+              if (!selectedPlaces.includes(place)) selectedPlaces.push(place);
+            } else {
+              selectedPlaces = selectedPlaces.filter(p => p !== place);
+            }
+            placesErr.style.display = "none";
+            renderChips();
+          });
+          placesList.appendChild(row);
+        });
+      }
+
+      function getTravelStyles() {
+        return [...document.querySelectorAll('input[name="travelStyle"]:checked')]
+          .map(el => safe(el.value))
+          .filter(Boolean);
+      }
+
+      function getFormData() {
+        return {
+          name: safe($("name").value),
+          email: safe($("email").value),
+          phone: safe($("phone").value).replace(/\D/g, "").slice(0, 10),
+          religion: safe($("religion").value),
+          destination: safe($("destinationState").value),
+          destinationState: safe($("destinationState").value),
+          fromLocation: safe($("fromLocation").value),
+          endPoint: safe($("endPoint").value),
+          startDate: safe($("startDate").value),
+          endDate: safe($("endDate").value),
+          days: Number($("days").value || 0),
+          travellers: Number($("travellers").value || 2),
+          rooms: Number($("rooms").value || 1),
+          budget: safe($("budget").value || "Standard"),
+          travelType: safe($("travelType").value || "Family"),
+          hotelClass: safe($("hotelClass").value || "Standard"),
+          vehicle: safe($("vehicle").value || "SUV"),
+          guide: safe($("guide").value || "Without Guide"),
+          needFood: safe($("needFood").value) === "true",
+          foodPreference: safe($("foodPreference").value || "Flexible"),
+          travelStyle: getTravelStyles(),
+          places: [...selectedPlaces],
+          notes: safe($("notes").value)
+        };
+      }
+
+      function validate(data) {
+        if (!data.name) return "Name is required.";
+        if (!data.email) return "Email is required.";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return "Please enter a valid email.";
+        if (!data.phone || !/^\d{10}$/.test(data.phone)) return "Please enter a valid 10-digit mobile number.";
+        if (!data.fromLocation) return "From location is required.";
+        if (!data.religion) return "Religion is required.";
+        if (!data.destinationState) return "State is required.";
+        if (!data.endPoint) return "Trip end point is required.";
+        if (!data.startDate) return "Start date is required.";
+        if (!data.days || data.days < 2) return "Minimum 2 days required.";
+        if (!data.places.length) return "Please select at least one pilgrimage place.";
+        return "";
+      }
+
+      async function generatePilgrimageItinerary(e) {
+        e.preventDefault();
+        setMsg("");
+
+        const payload = getFormData();
+        const err = validate(payload);
+
+        if (err) {
+          setMsg(err, "err");
+          if (!payload.places.length) placesErr.style.display = "block";
+          return;
+        }
+
+        try {
+          showLoading(true);
+
+          const res = await fetch(PILGRIMAGE_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          const result = await res.json();
+
+          if (!res.ok || !result?.ok) {
+            throw new Error(result?.detail || result?.message || "Failed to generate itinerary");
+          }
+
+          const bookingBundle = {
+            ...result,
+            data: payload
+          };
+
+          localStorage.setItem("HKE_PILGRIMAGE_AI_DRAFT", JSON.stringify(bookingBundle));
+          setMsg("Pilgrimage itinerary generated successfully.", "ok");
+
+          setTimeout(() => {
+            window.location.href = "pilgrimage-booking.html";
+          }, 500);
+
+        } catch (error) {
+          console.error(error);
+          setMsg(error.message || "Error generating itinerary. Please try again.", "err");
+        } finally {
+          showLoading(false);
+        }
+      }
+
+      $("resetBtn").addEventListener("click", () => {
+        form.reset();
+        destinationStateEl.innerHTML = `<option value="">— Select state —</option>`;
+        selectedPlaces = [];
+        renderChips();
+        setMsg("");
+        startDateEl.value = toISODate(new Date());
+        updateEndDate();
+      });
+
+      religionEl.addEventListener("change", () => {
+        populateStates();
+        selectedPlaces = [];
+        renderChips();
+        placesList.innerHTML = "";
+        updateLoaderIcon();
+      });
+
+      destinationStateEl.addEventListener("change", () => {
+        selectedPlaces = [];
+        renderChips();
+        placesList.innerHTML = "";
+      });
+
+      placesBtn.addEventListener("click", () => {
+        buildPlacesList();
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("placesModal"));
+        modal.show();
+      });
+
+      placesSearch.addEventListener("input", () => {
+        const q = placesSearch.value.toLowerCase().trim();
+        [...placesList.querySelectorAll(".placeRow")].forEach(row => {
+          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
+
+      $("placesClearBtn").addEventListener("click", () => {
+        selectedPlaces = [];
+        renderChips();
+        buildPlacesList();
+      });
+
+      if (!startDateEl.value) {
+        startDateEl.value = toISODate(new Date());
+      }
+
+      updateEndDate();
+      updateLoaderIcon();
+      startDateEl.addEventListener("change", updateEndDate);
+      daysEl.addEventListener("input", updateEndDate);
+      form.addEventListener("submit", generatePilgrimageItinerary);
+      renderChips();
+    })();
+  </script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

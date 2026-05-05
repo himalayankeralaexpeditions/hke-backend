@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE Partner Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0B0F18" />
+  <link rel="icon" type="image/png" href="media/logo.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="css/partner-portal.css" rel="stylesheet" />
+
+<link rel="stylesheet" href="css/hke-polish.css">
+</head>
+<body class="partner-body" data-page="partner-dashboard">
+  <div class="portal-shell">
+    <header class="portal-topbar">
+      <div class="inner">
+        <a class="portal-brand" href="index.html" aria-label="HKE home">
+          <img src="media/logo.png" alt="HKE Logo" width="550" height="550" />
+          <div>
+            <p class="line1">Himalayan Kerala Expeditions</p>
+            <p class="line2">Partner Rate Management</p>
+          </div>
+        </a>
+        <div class="portal-topbar-actions">
+          <a class="portal-btn portal-btn-ghost" href="index.html">Home</a>
+          <button id="logoutBtn" class="portal-btn portal-btn-primary" type="button">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="portal-page">
+      <section class="portal-hero" style="margin-bottom:24px;">
+        <div class="portal-copy">
+          <div class="portal-pill">Verified inventory powers future AI pricing</div>
+          <h1 style="margin-top:18px;">Partner Dashboard</h1>
+          <p>
+            Add availability windows, submit service rates, and maintain approved inventory for HKE itinerary planning. Only approved rates are intended for verified matching on the backend.
+          </p>
+        </div>
+        <aside class="portal-card meta-card">
+          <h2 class="section-title" style="font-size:1.2rem;">Partner Profile</h2>
+          <div class="meta-list">
+            <div class="meta-item"><strong>Partner Type</strong><span id="partnerTypeText">-</span></div>
+            <div class="meta-item"><strong>Business Name</strong><span id="businessNameText">-</span></div>
+            <div class="meta-item"><strong>Contact Person</strong><span id="contactPersonText">-</span></div>
+            <div class="meta-item"><strong>Mobile</strong><span id="partnerMobileText">-</span></div>
+            <div class="meta-item"><strong>Email</strong><span id="partnerEmailText">-</span></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="dashboard-layout">
+        <div class="dashboard-main">
+          <article class="portal-card dashboard-card">
+            <h2 class="section-title">Add New Rate</h2>
+            <p class="section-subtitle">
+              Submit fresh availability or update an existing record. Availability end date is limited to 2 months from the selected start date.
+            </p>
+
+            <form id="rateForm" class="partner-form">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="partnerTypeRate">Partner Type</label>
+                  <input id="partnerTypeRate" name="partnerType" type="text" readonly />
+                </div>
+                <div class="field">
+                  <label for="businessNameRate">Business Name</label>
+                  <input id="businessNameRate" name="businessName" type="text" readonly />
+                </div>
+                <div class="field">
+                  <label for="location">Location / City</label>
+                  <input id="location" name="location" type="text" placeholder="Srinagar" required />
+                </div>
+                <div class="field">
+                  <label for="state">State</label>
+                  <input id="state" name="state" type="text" placeholder="Jammu & Kashmir" required />
+                </div>
+                <div class="field full">
+                  <label for="serviceArea">Service Area</label>
+                  <input id="serviceArea" name="serviceArea" type="text" placeholder="Srinagar, Gulmarg, Pahalgam" required />
+                </div>
+                <div class="field">
+                  <label for="availableFrom">Available From</label>
+                  <input id="availableFrom" name="availableFrom" type="date" required />
+                </div>
+                <div class="field">
+                  <label for="availableTo">Available To</label>
+                  <input id="availableTo" name="availableTo" type="date" required />
+                  <span class="help-text">Maximum 2 months from available from date.</span>
+                </div>
+                <div class="field full">
+                  <label for="notes">Notes</label>
+                  <textarea id="notes" name="notes" placeholder="Seasonal notes, inclusions, conditions, blackout info..."></textarea>
+                </div>
+              </div>
+
+              <div id="rateTypeFields" class="rate-type-fields" style="margin-top:14px;"></div>
+
+              <div class="form-actions">
+                <button class="portal-btn portal-btn-primary" type="submit" id="saveRateText">Save Rate</button>
+                <button class="portal-btn portal-btn-ghost" type="button" id="cancelEditBtn" style="display:none;">Cancel Edit</button>
+              </div>
+
+              <div id="ratesMsg" class="msg-box" aria-live="polite"></div>
+            </form>
+          </article>
+
+          <article class="portal-card dashboard-card">
+            <h2 class="section-title">My Rates</h2>
+            <p class="section-subtitle">
+              Review submitted rates, current approval status, and edit or remove entries when required.
+            </p>
+
+            <div id="ratesEmpty" class="empty-state" style="display:none;">
+              No partner rates found yet. Save your first rate to populate this list.
+            </div>
+
+            <div class="rates-table-wrap">
+              <table class="rates-table" aria-label="My submitted rates">
+                <thead>
+                  <tr>
+                    <th>Business / Area</th>
+                    <th>Rate Details</th>
+                    <th>Availability</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ratesTableBody"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <aside class="dashboard-side">
+          <section class="portal-card meta-card">
+            <h2 class="section-title" style="font-size:1.15rem;">Approval Notes</h2>
+            <p class="section-subtitle">
+              New or updated rates are expected to be saved with <strong>pending</strong> status until reviewed by HKE admin. Approved inventory is what the backend should later expose to AI itinerary pricing logic.
+            </p>
+          </section>
+          <section class="portal-card meta-card">
+            <h2 class="section-title" style="font-size:1.15rem;">API Fallback</h2>
+            <p class="section-subtitle">
+              If the backend is unreachable, the page shows: <strong>Server temporarily unavailable. Please try later.</strong>
+            </p>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script defer src="scripts/partner-portal.js"></script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

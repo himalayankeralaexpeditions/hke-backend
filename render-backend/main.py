@@ -67,6 +67,11 @@ app.add_middleware(
 async def validation_exception_handler(_request: Request, exc: RequestValidationError):
     first_error = exc.errors()[0] if exc.errors() else {}
     message = first_error.get("msg") or "Invalid request"
+    logger.warning(
+        "Request validation failed path=%s message=%s",
+        getattr(_request, "url", ""),
+        message
+    )
     return JSONResponse(
         status_code=422,
         content={"ok": False, "detail": message}
@@ -125,14 +130,18 @@ GOOGLE_CONTACT_TAB = os.getenv("GOOGLE_CONTACT_TAB", "ContactEnquiries").strip()
 
 # OTP / MSG91
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
-MSG91_SMS_FLOW_ID = os.getenv("MSG91_SMS_FLOW_ID", "").strip()
-MSG91_DLT_TEMPLATE_ID = os.getenv("MSG91_DLT_TEMPLATE_ID", "").strip()
+MSG91_FLOW_ID = os.getenv("MSG91_FLOW_ID", os.getenv("MSG91_SMS_FLOW_ID", "")).strip()
+MSG91_SMS_FLOW_ID = MSG91_FLOW_ID
+MSG91_OTP_TEMPLATE_ID = os.getenv("MSG91_OTP_TEMPLATE_ID", os.getenv("MSG91_DLT_TEMPLATE_ID", "")).strip()
+MSG91_DLT_TEMPLATE_ID = MSG91_OTP_TEMPLATE_ID
+MSG91_ENTITY_ID = os.getenv("MSG91_ENTITY_ID", "").strip()
 MSG91_DLT_TEMPLATE_VERSION = os.getenv("MSG91_DLT_TEMPLATE_VERSION", "v1.1").strip()
 MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "var1").strip()
 MSG91_SENDER_ID = os.getenv("MSG91_SENDER_ID", "HKEIND").strip()
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
-OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
+OTP_DEV_MODE = os.getenv("OTP_DEV_MODE", os.getenv("OTP_BYPASS", "false")).lower() == "true"
+OTP_BYPASS = OTP_DEV_MODE
 
 # Admin login
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip()
@@ -162,6 +171,7 @@ mongo_client = (
 mongo_ready = False
 GOOGLE_SHEETS_CLIENT = None
 GOOGLE_WORKSHEET_CACHE: Dict[str, Any] = {}
+LAST_OTP_PROVIDER_ERROR_TYPE = ""
 
 # =========================================================
 # DB
@@ -339,6 +349,10 @@ def ensure_app_mongo_indexes():
     db["whatsapp_logs"].create_index("phone")
     db["reviews"].create_index("phone")
     db["itinerary_edits"].create_index("phone")
+    db["contact_leads"].create_index("phone")
+    db["contact_leads"].create_index("createdAt")
+    db["system_alerts"].create_index("createdAt")
+    db["system_alerts"].create_index("type")
 
 
 def safe_mongo_write(action: str, func):
@@ -665,6 +679,47 @@ def log_whatsapp_event(phone: str, message_type: str, message: str, status: str)
             "status": safe_str(status),
             "createdAt": utc_now_iso(),
         })
+    )
+
+
+def save_contact_lead_mongo(data: Dict[str, Any]):
+    phone = clean_phone(safe_str(data.get("phone")))
+    doc = {
+        "name": safe_str(data.get("name")),
+        "phone": phone,
+        "email": safe_str(data.get("email")),
+        "message": safe_str(data.get("message")),
+        "page": safe_str(data.get("page")),
+        "source": safe_str(data.get("source", "website_contact")),
+        "createdAt": utc_now_iso(),
+    }
+    safe_mongo_write(
+        "save_contact_lead",
+        lambda: get_collection("contact_leads").insert_one(doc)
+    )
+
+
+def create_system_alert(
+    alert_type: str,
+    title: str,
+    message: str,
+    *,
+    phone: str = "",
+    priority: str = "medium"
+):
+    digits = clean_phone(phone)
+    doc = {
+        "type": safe_str(alert_type),
+        "title": safe_str(title),
+        "message": safe_str(message),
+        "phone": digits,
+        "priority": safe_str(priority, "medium"),
+        "read": False,
+        "createdAt": utc_now_iso(),
+    }
+    safe_mongo_write(
+        "create_system_alert",
+        lambda: get_collection("system_alerts").insert_one(doc)
     )
 
 
@@ -1391,20 +1446,51 @@ def generate_otp() -> str:
     return str(random.randint(100000, 999999))
 
 
+def set_last_otp_provider_error(error_type: str):
+    global LAST_OTP_PROVIDER_ERROR_TYPE
+    LAST_OTP_PROVIDER_ERROR_TYPE = safe_str(error_type)
+
+
+def get_last_otp_provider_error() -> str:
+    return safe_str(LAST_OTP_PROVIDER_ERROR_TYPE)
+
+
+def otp_storage_available() -> bool:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM otp_sessions LIMIT 1")
+        conn.close()
+        return True
+    except Exception:
+        logger.exception("OTP storage diagnostic failed")
+        return False
+
+
 def send_msg91_otp(mobile: str, otp: str):
-    if OTP_BYPASS:
+    if OTP_DEV_MODE:
+        set_last_otp_provider_error("")
         return {"ok": True, "message": "OTP bypass mode enabled", "otp": otp}
 
     if not MSG91_AUTH_KEY:
-        raise RuntimeError("MSG91_AUTH_KEY not configured")
+        logger.error("OTP provider misconfigured: MSG91_AUTH_KEY not configured")
+        set_last_otp_provider_error("missing_auth_key")
+        raise RuntimeError("MSG91 auth key is not configured")
 
-    if not MSG91_SMS_FLOW_ID:
-        raise RuntimeError("MSG91_SMS_FLOW_ID not configured")
+    if not MSG91_FLOW_ID:
+        logger.error("OTP provider misconfigured: MSG91_FLOW_ID / MSG91_SMS_FLOW_ID not configured")
+        set_last_otp_provider_error("missing_flow_id")
+        raise RuntimeError("MSG91 flow id is not configured")
+
+    if not MSG91_SENDER_ID:
+        logger.error("OTP provider misconfigured: MSG91_SENDER_ID not configured")
+        set_last_otp_provider_error("missing_sender_id")
+        raise RuntimeError("MSG91 sender id is not configured")
 
     variable_name = MSG91_OTP_VARIABLE_NAME or "var1"
     url = "https://control.msg91.com/api/v5/flow/"
     payload = {
-        "flow_id": MSG91_SMS_FLOW_ID,
+        "flow_id": MSG91_FLOW_ID,
         "sender": MSG91_SENDER_ID,
         "mobiles": f"91{mobile}",
         variable_name: otp
@@ -1418,6 +1504,7 @@ def send_msg91_otp(mobile: str, otp: str):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
     except requests.RequestException as exc:
+        set_last_otp_provider_error("transport_error")
         logger.exception("MSG91 OTP request transport failure for mobile=%s", mobile)
         raise RuntimeError(f"MSG91 request failed: {exc}") from exc
 
@@ -1427,6 +1514,7 @@ def send_msg91_otp(mobile: str, otp: str):
         response_data = {"raw": response.text}
 
     if response.status_code not in (200, 201, 202):
+        set_last_otp_provider_error("provider_http_error")
         logger.error(
             "MSG91 OTP send failed for mobile=%s status=%s response=%s",
             mobile,
@@ -1438,6 +1526,7 @@ def send_msg91_otp(mobile: str, otp: str):
     lower_dump = json.dumps(response_data).lower()
 
     if "error" in lower_dump or "failed" in lower_dump or "template id missing" in lower_dump:
+        set_last_otp_provider_error("provider_rejected")
         logger.error(
             "MSG91 OTP rejected for mobile=%s response=%s",
             mobile,
@@ -1445,6 +1534,7 @@ def send_msg91_otp(mobile: str, otp: str):
         )
         raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
 
+    set_last_otp_provider_error("")
     logger.info(
         "MSG91 OTP response for mobile=%s response=%s",
         mobile,
@@ -2066,6 +2156,122 @@ def require_admin_token(authorization: Optional[str]) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid or expired admin session")
 
     return session
+
+
+def build_alert_item(
+    alert_type: str,
+    title: str,
+    message: str,
+    *,
+    phone: str = "",
+    created_at: str = "",
+    priority: str = "medium",
+    read: bool = False
+) -> Dict[str, Any]:
+    return {
+        "type": safe_str(alert_type),
+        "title": safe_str(title),
+        "message": safe_str(message),
+        "phone": clean_phone(phone),
+        "createdAt": safe_str(created_at),
+        "priority": safe_str(priority, "medium"),
+        "read": bool(read),
+    }
+
+
+def get_admin_alerts_data() -> List[Dict[str, Any]]:
+    if not mongo_write_enabled():
+        return []
+
+    alerts: List[Dict[str, Any]] = []
+    db = get_mongo_db()
+
+    try:
+        for item in db["ai_itineraries"].find({}, {"name": 1, "destination": 1, "phone": 1, "createdAt": 1}).sort("createdAt", -1).limit(8):
+            alerts.append(build_alert_item(
+                "enquiry",
+                "New enquiry received",
+                f"{safe_str(item.get('name'), 'Customer')} requested {safe_str(item.get('destination'), 'trip planning')}",
+                phone=safe_str(item.get("phone")),
+                created_at=safe_str(item.get("createdAt")),
+                priority="medium",
+            ))
+    except Exception:
+        logger.exception("Admin alerts failed to load ai_itineraries")
+
+    try:
+        for item in db["bookings"].find({}, {"name": 1, "tripName": 1, "destination": 1, "phone": 1, "createdAt": 1, "status": 1}).sort("createdAt", -1).limit(8):
+            alerts.append(build_alert_item(
+                "booking",
+                "New booking received",
+                f"{safe_str(item.get('name'), 'Customer')} booked {safe_str(item.get('tripName') or item.get('destination'), 'a trip')}",
+                phone=safe_str(item.get("phone")),
+                created_at=safe_str(item.get("createdAt")),
+                priority="high",
+            ))
+    except Exception:
+        logger.exception("Admin alerts failed to load bookings")
+
+    try:
+        for item in db["payments"].find({}, {"name": 1, "destination": 1, "phone": 1, "createdAt": 1, "status": 1, "paidAmount": 1}).sort("createdAt", -1).limit(8):
+            alerts.append(build_alert_item(
+                "payment",
+                "Payment alert",
+                f"{safe_str(item.get('name'), 'Customer')} payment status: {safe_str(item.get('status'), 'updated')}",
+                phone=safe_str(item.get("phone")),
+                created_at=safe_str(item.get("createdAt")),
+                priority="high",
+            ))
+    except Exception:
+        logger.exception("Admin alerts failed to load payments")
+
+    try:
+        for item in db["contact_leads"].find({}, {"name": 1, "message": 1, "phone": 1, "createdAt": 1}).sort("createdAt", -1).limit(8):
+            alerts.append(build_alert_item(
+                "contact",
+                "New contact lead",
+                f"{safe_str(item.get('name'), 'Customer')} sent a contact enquiry",
+                phone=safe_str(item.get("phone")),
+                created_at=safe_str(item.get("createdAt")),
+                priority="medium",
+            ))
+    except Exception:
+        logger.exception("Admin alerts failed to load contact leads")
+
+    try:
+        for item in db["system_alerts"].find({}, {"type": 1, "title": 1, "message": 1, "phone": 1, "createdAt": 1, "priority": 1, "read": 1}).sort("createdAt", -1).limit(8):
+            alerts.append(build_alert_item(
+                safe_str(item.get("type"), "system"),
+                safe_str(item.get("title"), "System alert"),
+                safe_str(item.get("message")),
+                phone=safe_str(item.get("phone")),
+                created_at=safe_str(item.get("createdAt")),
+                priority=safe_str(item.get("priority"), "medium"),
+                read=bool(item.get("read", False)),
+            ))
+    except Exception:
+        logger.exception("Admin alerts failed to load system alerts")
+
+    alerts.sort(key=lambda item: safe_str(item.get("createdAt")), reverse=True)
+    return alerts[:25]
+
+
+def get_otp_debug_data() -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "otp": {
+            "sendRouteExists": True,
+            "verifyRouteExists": True,
+            "providerConfigured": bool(MSG91_AUTH_KEY and MSG91_FLOW_ID and MSG91_SENDER_ID),
+            "authKeyPresent": bool(MSG91_AUTH_KEY),
+            "templateOrFlowConfigured": bool(MSG91_FLOW_ID or MSG91_OTP_TEMPLATE_ID),
+            "senderConfigured": bool(MSG91_SENDER_ID),
+            "entityConfigured": bool(MSG91_ENTITY_ID),
+            "storageAvailable": otp_storage_available(),
+            "devMode": OTP_DEV_MODE,
+            "lastProviderErrorType": get_last_otp_provider_error(),
+        }
+    }
 
 
 def money_to_paise(value: Any) -> int:
@@ -2820,6 +3026,20 @@ def admin_logout(authorization: Optional[str] = Header(default=None)):
     }
 
 
+@app.get("/api/admin/alerts")
+def admin_alerts(authorization: Optional[str] = Header(default=None)):
+    require_admin_token(authorization)
+    return {
+        "ok": True,
+        "alerts": get_admin_alerts_data()
+    }
+
+
+@app.get("/api/debug/otp")
+def debug_otp():
+    return get_otp_debug_data()
+
+
 # =========================================================
 # CUSTOMER OTP LOGIN
 # =========================================================
@@ -2860,8 +3080,30 @@ def send_otp(payload: SendOTPRequest):
     try:
         provider_response = send_msg91_otp(mobile, otp)
     except Exception as e:
+        create_system_alert(
+            "otp",
+            "OTP send failed",
+            f"OTP send failed for {mobile}: {safe_str(e)}",
+            phone=mobile,
+            priority="high"
+        )
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM otp_sessions WHERE mobile = ?", (mobile,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            logger.exception("Unable to clean failed OTP session for mobile=%s", mobile)
         logger.exception("OTP send failed for mobile=%s", mobile)
-        raise HTTPException(status_code=500, detail="Unable to send OTP right now")
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "detail": safe_str(e) or "Unable to send OTP right now",
+                "errorType": get_last_otp_provider_error() or "otp_send_failed"
+            }
+        )
 
     resp = {
         "ok": True,
@@ -2872,10 +3114,11 @@ def send_otp(payload: SendOTPRequest):
         "provider": "msg91"
     }
 
-    if OTP_BYPASS:
+    if OTP_DEV_MODE:
+        resp["debugOtp"] = otp
         resp["debug_otp"] = otp
 
-    if provider_response:
+    if provider_response and OTP_DEV_MODE:
         resp["provider_response"] = provider_response
 
     return resp
@@ -2898,6 +3141,8 @@ def verify_otp(payload: VerifyOTPRequest):
 
     if not row:
         conn.close()
+        logger.warning("OTP verification failed: session not found for mobile=%s", mobile)
+        create_system_alert("otp", "OTP session missing", f"OTP session not found for {mobile}", phone=mobile, priority="medium")
         raise HTTPException(status_code=404, detail="OTP session not found")
 
     if safe_int(row["verified"], 0) == 1:
@@ -2913,6 +3158,8 @@ def verify_otp(payload: VerifyOTPRequest):
     attempts = safe_int(row["attempts"], 0)
     if attempts >= OTP_MAX_ATTEMPTS:
         conn.close()
+        logger.warning("OTP verification blocked: max attempts exceeded for mobile=%s", mobile)
+        create_system_alert("otp", "OTP attempts exceeded", f"Maximum OTP attempts exceeded for {mobile}", phone=mobile, priority="high")
         raise HTTPException(status_code=400, detail="Maximum OTP attempts exceeded")
 
     expires_at_raw = safe_str(row["expires_at"])
@@ -2923,6 +3170,8 @@ def verify_otp(payload: VerifyOTPRequest):
 
     if datetime.utcnow() > expires_at:
         conn.close()
+        logger.warning("OTP verification failed: expired OTP for mobile=%s", mobile)
+        create_system_alert("otp", "OTP expired", f"Expired OTP for {mobile}", phone=mobile, priority="medium")
         raise HTTPException(status_code=400, detail="OTP expired")
 
     if safe_str(row["otp_code"]) != safe_str(payload.otp):
@@ -2933,6 +3182,8 @@ def verify_otp(payload: VerifyOTPRequest):
         """, (row["id"],))
         conn.commit()
         conn.close()
+        logger.warning("OTP verification failed: invalid OTP for mobile=%s", mobile)
+        create_system_alert("otp", "Invalid OTP", f"Invalid OTP entered for {mobile}", phone=mobile, priority="medium")
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
     verified_at = utc_now_iso()
@@ -3296,6 +3547,7 @@ def edit_itinerary(payload: ChatEditRequest):
 @app.post("/api/leads")
 def submit_contact_or_lead(payload: ContactLeadRequest):
     data = payload.model_dump()
+    save_contact_lead_mongo(data)
     upsert_customer_mongo(
         safe_str(data.get("phone")),
         name=safe_str(data.get("name")),

@@ -1,13 +1,19 @@
 (() => {
   "use strict";
+  console.log("HKE ai-planner.js loaded: 20260505_itinerary_result_fix");
 
   const API_BASE = "https://hke-backend.onrender.com";
   const API_GENERATE = `${API_BASE}/api/ai/itinerary`;
   const API_WHATSAPP_LOG = `${API_BASE}/api/whatsapp/log`;
   const COMPANY_PHONE = "919797294747";
-  const RESULT_PAGE = "itinerary-result.html";
-  const REQUEST_TIMEOUT_MS = 20000;
+  const RESULT_PAGE = "itinerary-result.html?v=20260505_itinerary_result_fix";
+  const REQUEST_TIMEOUT_MS = 90000;
   const CUSTOMER_PROFILE_KEY = "HKE_CUSTOMER_PROFILE";
+  const LATEST_AI_RESPONSE_KEY = "hke_latest_ai_response";
+  const LATEST_ITINERARY_KEY = "hke_latest_itinerary";
+  const LATEST_PLANNER_PAYLOAD_KEY = "hke_latest_planner_payload";
+  const LATEST_PLANNER_NOTICE_KEY = "hke_latest_planner_notice";
+  const BOOKING_CONTEXT_KEY = "HKE_BOOKING_CONTEXT";
 
   const $ = (id) => document.getElementById(id);
 
@@ -38,6 +44,11 @@
   const extraInfoEl = $("extraInfo");
   const itCardsEl = $("itCards");
   const postActionsEl = $("postActions");
+  const routeMapPanelEl = $("routeMapPanel");
+  const routeMapSummaryEl = $("routeMapSummary");
+  const routeMapFrameEl = $("routeMapFrame");
+  const viewRouteMapBtnEl = $("viewRouteMapBtn");
+  const openDirectionsBtnEl = $("openDirectionsBtn");
 
   const generateBtn = $("generateBtn");
   const resetBtn = $("resetBtn");
@@ -58,6 +69,7 @@
 
   let selectedPlaces = [];
   let isGenerating = false;
+  let resumeAfterLogin = false;
 
   const PLACES_BY_STATE = {
     "Himachal Pradesh": [
@@ -205,6 +217,35 @@
     ]
   };
 
+  function applyDynamicDestinationMap(destinationMap) {
+    if (!destinationMap || typeof destinationMap !== "object") return;
+
+    Object.keys(destinationMap).forEach((state) => {
+      const nextPlaces = Array.isArray(destinationMap[state]) ? destinationMap[state] : [];
+
+      if (!PLACES_BY_STATE[state]) {
+        PLACES_BY_STATE[state] = [];
+      }
+
+      nextPlaces.forEach((place) => {
+        const cleanPlace = String(place || "").trim();
+        if (cleanPlace && !PLACES_BY_STATE[state].includes(cleanPlace)) {
+          PLACES_BY_STATE[state].push(cleanPlace);
+        }
+      });
+
+      if (destinationEl) {
+        const exists = [...destinationEl.options].some((option) => option.value === state);
+        if (!exists) {
+          const option = document.createElement("option");
+          option.value = state;
+          option.textContent = state;
+          destinationEl.appendChild(option);
+        }
+      }
+    });
+  }
+
   function escapeHTML(str = "") {
     return String(str)
       .replaceAll("&", "&amp;")
@@ -224,6 +265,12 @@
     } catch {
       return null;
     }
+  }
+
+  function persistDebugData(key, value) {
+    const serialized = JSON.stringify(value);
+    sessionStorage.setItem(key, serialized);
+    localStorage.setItem(key, serialized);
   }
 
   function titleCase(str = "") {
@@ -444,6 +491,7 @@
 
     let res;
     try {
+      console.log("Calling API:", `${API_BASE}/api/ai/itinerary`);
       res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -451,8 +499,10 @@
         signal: controller.signal
       });
     } catch (error) {
+      console.log("Fetch error:", error);
       if (error?.name === "AbortError") {
-        throw new Error("Server temporarily unavailable. Please try later.");
+        console.log("AI itinerary request timeout after", REQUEST_TIMEOUT_MS);
+        throw new Error("Itinerary is taking longer than usual. Please wait or try again.");
       }
       throw new Error("Unable to connect right now. Please try again.");
     } finally {
@@ -468,12 +518,37 @@
       data = { raw: text };
     }
 
-    if (!res.ok) {
+    const responseLooksLikeGeneratedText =
+      typeof text === "string" &&
+      text.includes("Generated Itinerary Title") &&
+      text.includes("Generated Itinerary Summary");
+
+    const success = Boolean(
+      data?.ok === true ||
+      data?.itinerary ||
+      data?.generatedTitle ||
+      data?.generatedSummary ||
+      data?.title ||
+      data?.summary ||
+      responseLooksLikeGeneratedText
+    );
+
+    console.log("AI itinerary HTTP status", res.status);
+    console.log("AI itinerary raw body", text);
+    console.log("AI itinerary parsed data", data);
+    console.log("AI itinerary success detected", success);
+
+    if (!res.ok && !success) {
+      console.log("AI itinerary request failed", {
+        status: res.status,
+        body: data
+      });
       const err =
         data?.detail?.[0]?.msg ||
         data?.detail ||
         data?.message ||
         data?.error ||
+        data?.raw ||
         `HTTP ${res.status}`;
       throw new Error(typeof err === "string" ? err : JSON.stringify(err));
     }
@@ -614,21 +689,185 @@
     );
   }
 
-  function wirePostActions(data, itinerary) {
+  function normalizeItineraryForStorage(resp) {
+    if (resp?.itinerary !== undefined) {
+      return resp.itinerary;
+    }
+
+    if (
+      resp?.generatedTitle ||
+      resp?.generatedSummary ||
+      resp?.title ||
+      resp?.summary ||
+      resp?.dayWiseItinerary
+    ) {
+      return {
+        title: resp.generatedTitle || resp.title || "",
+        summary: resp.generatedSummary || resp.summary || "",
+        dayWiseItinerary: resp.dayWiseItinerary || null
+      };
+    }
+
+    return resp;
+  }
+
+  function buildRouteMap(data, routeMap) {
+    if (routeMap && typeof routeMap === "object" && routeMap.googleMapsSearchUrl) {
+      return routeMap;
+    }
+    const destination = data.destination || "";
+    const places = Array.isArray(data.places) ? data.places : [];
+    const endPoint = data.endPoint || destination;
+    const searchQuery = [destination].concat(places).filter(Boolean).join(", ");
+    return {
+      startPoint: data.fromLocation || "",
+      destination,
+      endPoint,
+      places,
+      googleMapsSearchUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery || destination || endPoint)}`,
+      googleMapsDirectionsUrl: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(data.fromLocation || destination || "")}&destination=${encodeURIComponent(endPoint || destination || "")}&travelmode=driving`
+    };
+  }
+
+  function extractTripDays(data, itinerary) {
+    const explicitDays = Number(data?.days || 0);
+    if (explicitDays > 0) return explicitDays;
+    const itineraryDays = Array.isArray(itinerary?.days) ? itinerary.days.length : 0;
+    return itineraryDays || 1;
+  }
+
+  function getDestinationBasePrice(destination = "") {
+    const value = String(destination || "").toLowerCase();
+    if (value.includes("kashmir")) return 16999;
+    if (value.includes("manali")) return 15999;
+    if (value.includes("kerala")) return 18499;
+    if (value.includes("himachal")) return 19999;
+    if (value.includes("leh") || value.includes("ladakh")) return 22999;
+    if (value.includes("uttarakhand")) return 17999;
+    if (value.includes("goa")) return 14999;
+    if (value.includes("rajasthan")) return 18999;
+    return 17499;
+  }
+
+  function getBudgetMultiplier(value = "") {
+    const budget = String(value || "").toLowerCase();
+    if (budget.includes("luxury")) return 1.45;
+    if (budget.includes("premium")) return 1.28;
+    if (budget.includes("deluxe")) return 1.14;
+    if (budget.includes("budget")) return 0.9;
+    return 1;
+  }
+
+  function getHotelMultiplier(value = "") {
+    const hotel = String(value || "").toLowerCase();
+    if (hotel.includes("luxury")) return 1.34;
+    if (hotel.includes("premium")) return 1.2;
+    if (hotel.includes("deluxe")) return 1.1;
+    if (hotel.includes("budget")) return 0.9;
+    return 1;
+  }
+
+  function getVehicleAdjustment(value = "") {
+    const vehicle = String(value || "").toLowerCase();
+    if (vehicle.includes("crysta")) return 3200;
+    if (vehicle.includes("innova")) return 2400;
+    if (vehicle.includes("suv")) return 1800;
+    if (vehicle.includes("tempo")) return 2800;
+    if (vehicle.includes("sedan")) return -1000;
+    return 0;
+  }
+
+  function buildPricingSummary(data, itinerary) {
+    const travellers = Math.max(1, Number(data?.travellers || 1));
+    const tripDays = Math.max(1, extractTripDays(data, itinerary));
+    const packageName = itinerary?.title || data?.packageName || `${data?.destination || "HKE"} Package`;
+    const destination = data?.destination || itinerary?.meta?.destination || "";
+    const basePerTraveller = getDestinationBasePrice(destination);
+    const dayAdjustment = Math.max(0, tripDays - 5) * 1400;
+    const vehicleAdjustment = getVehicleAdjustment(data?.vehicle);
+    const estimatedPerTraveller = Math.round(
+      (basePerTraveller + dayAdjustment + vehicleAdjustment) *
+      getBudgetMultiplier(data?.budget) *
+      getHotelMultiplier(data?.hotelClass)
+    );
+    const totalAmount = Math.max(estimatedPerTraveller * travellers, 0);
+    const advanceAmount = Math.round(totalAmount * 0.2);
+    const remainingAmount = Math.max(0, totalAmount - advanceAmount);
+
+    return {
+      packageName,
+      destination,
+      tripDays,
+      pricePerTraveller: estimatedPerTraveller,
+      finalFare: totalAmount,
+      advanceFare: advanceAmount,
+      balanceFare: remainingAmount,
+      isEstimated: true,
+      estimateLabel: "Estimated price — final confirmation by HKE team"
+    };
+  }
+
+  function buildBookingContext(data, itinerary, routeMap, pricing) {
+    return {
+      packageName: pricing.packageName,
+      destination: pricing.destination,
+      pricePerTraveller: pricing.pricePerTraveller,
+      totalAmount: pricing.finalFare,
+      advanceAmount: pricing.advanceFare,
+      remainingAmount: pricing.balanceFare,
+      customerName: data.name,
+      phone: data.phone,
+      email: data.email,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      travellers: Number(data.travellers || 0),
+      rooms: Number(data.rooms || 0),
+      tripDays: Number(pricing.tripDays || data.days || 0),
+      originPage: RESULT_PAGE,
+      itinerary,
+      routeMap,
+      customer: data,
+      pricing
+    };
+  }
+
+  function renderRouteMap(routeMap) {
+    if (!routeMapPanelEl || !routeMapSummaryEl || !routeMapFrameEl || !viewRouteMapBtnEl || !openDirectionsBtnEl) return;
+    const destination = routeMap.destination || routeMap.endPoint || "Destination";
+    routeMapSummaryEl.textContent = `Route: ${routeMap.startPoint || "-"} to ${routeMap.endPoint || destination}. Stops: ${(routeMap.places || []).join(", ") || destination}.`;
+    viewRouteMapBtnEl.href = routeMap.googleMapsSearchUrl || "#";
+    openDirectionsBtnEl.href = routeMap.googleMapsDirectionsUrl || "#";
+    routeMapFrameEl.src = `https://www.google.com/maps?q=${encodeURIComponent(destination)}&output=embed`;
+    routeMapPanelEl.style.display = "block";
+  }
+
+  function wirePostActions(data, itinerary, routeMap, hotelInfo, cabInfo) {
     const careUrl = `https://wa.me/${COMPANY_PHONE}?text=${buildCustomerCareMessage(data)}`;
     const messageUrl = `https://wa.me/${COMPANY_PHONE}?text=${buildItineraryMessage(data, itinerary)}`;
+    const finalRouteMap = buildRouteMap(data, routeMap);
+    const pricing = buildPricingSummary(data, itinerary);
+    const bookingContext = buildBookingContext(data, itinerary, finalRouteMap, pricing);
 
     if (careBtn) careBtn.href = careUrl;
     if (messageBtn) messageBtn.href = messageUrl;
     if (editBtn) editBtn.href = `${RESULT_PAGE}#edit-itinerary`;
 
     const latestPlan = {
-      customer: data,
+      customer: {
+        ...data,
+        packageName: pricing.packageName
+      },
       itinerary,
+      routeMap: finalRouteMap,
+      pricing,
+      hotelInfo: hotelInfo || {},
+      cabInfo: cabInfo || {},
       createdAt: new Date().toISOString()
     };
 
     localStorage.setItem("hkeLatestTripPlan", JSON.stringify(latestPlan));
+    localStorage.setItem(BOOKING_CONTEXT_KEY, JSON.stringify(bookingContext));
+    sessionStorage.setItem(BOOKING_CONTEXT_KEY, JSON.stringify(bookingContext));
     sessionStorage.setItem("hke_customer_data", JSON.stringify(data));
     sessionStorage.setItem("hke_itinerary_data", JSON.stringify(itinerary));
     sessionStorage.setItem("hke_itinerary_text", itineraryToText(data, itinerary));
@@ -651,6 +890,8 @@
       message: itineraryToText(data, itinerary),
       status: "open_requested"
     }));
+
+    renderRouteMap(finalRouteMap);
   }
 
   destinationEl?.addEventListener("change", () => {
@@ -682,11 +923,17 @@
     startDateEl.value = formatDateISO(new Date());
   }
 
+  applyDynamicDestinationMap(window.HKE_DYNAMIC_AI_DESTINATION_MAP || {});
   autofillCustomerFields();
   updateEndDate();
   rebuildPlacesList();
   renderChips();
   syncPlacesValue();
+
+  window.addEventListener("hke:dynamic-ai-destinations", (event) => {
+    applyDynamicDestinationMap((event && event.detail) || {});
+    rebuildPlacesList();
+  });
 
   resetBtn?.addEventListener("click", () => {
     form.reset();
@@ -708,15 +955,30 @@
 
     if (outputEl) outputEl.style.display = "none";
     if (postActionsEl) postActionsEl.style.display = "none";
+    if (routeMapPanelEl) routeMapPanelEl.style.display = "none";
   });
 
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (isGenerating) return;
 
+    if (window.HKEAuthGate && !window.HKEAuthGate.isLoggedIn()) {
+      resumeAfterLogin = true;
+      window.HKEAuthGate.requireLogin({
+        returnUrl: "ai-planner.html",
+        onSuccess: () => {
+          if (!resumeAfterLogin) return;
+          resumeAfterLogin = false;
+          form?.requestSubmit ? form.requestSubmit() : form?.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+        }
+      });
+      return;
+    }
+
     updateEndDate();
 
     const payload = getPayload();
+    persistDebugData(LATEST_PLANNER_PAYLOAD_KEY, payload);
     const validationError = validatePayload(payload);
 
     if (validationError) {
@@ -738,18 +1000,32 @@
 
     try {
       const resp = await postJSON(API_GENERATE, payload);
-      const itinerary = resp?.itinerary || {};
+      const itinerary = resp?.itinerary || normalizeItineraryForStorage(resp) || {};
+      const routeMap = resp?.routeMap || null;
+      const hotelInfo = resp?.hotelInfo || {};
+      const cabInfo = resp?.cabInfo || {};
+      persistDebugData(LATEST_AI_RESPONSE_KEY, resp);
+      persistDebugData(LATEST_ITINERARY_KEY, itinerary);
+      if (resp?.googleSheet?.ok === false && resp?.googleSheet?.message) {
+        persistDebugData(LATEST_PLANNER_NOTICE_KEY, {
+          type: "err",
+          message: resp.googleSheet.message
+        });
+      } else {
+        sessionStorage.removeItem(LATEST_PLANNER_NOTICE_KEY);
+        localStorage.removeItem(LATEST_PLANNER_NOTICE_KEY);
+      }
 
       renderStructuredOutput(itinerary);
-      wirePostActions(payload, itinerary);
+      wirePostActions(payload, itinerary, routeMap, hotelInfo, cabInfo);
 
       setMsg("Itinerary generated successfully.", "ok");
-
-      setTimeout(() => {
-        window.location.href = RESULT_PAGE;
-      }, 600);
+      console.log("Redirecting to itinerary page");
+      window.location.href = RESULT_PAGE;
     } catch (err) {
       console.error(err);
+      console.log("Fetch error:", err);
+      console.log("AI itinerary error branch fired", err?.message || err);
       setMsg(err.message || "Unable to generate itinerary right now.", "err");
     } finally {
       isGenerating = false;

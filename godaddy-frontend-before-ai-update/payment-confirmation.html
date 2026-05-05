@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Payment Confirmation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <style>
+    :root{
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --text:#EAEFF7;
+      --muted:rgba(234,239,247,.74);
+      --panel:rgba(255,255,255,.06);
+      --border:rgba(255,255,255,.12);
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+      --success:#bdf5c8;
+      --successBg:rgba(56, 189, 110, .12);
+      --successBorder:rgba(87, 255, 151, .22);
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family:"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.82), rgba(0,0,0,.36)),
+        url("media/hero-banner.jpg") center/cover no-repeat fixed;
+      position:relative;
+      overflow-x:hidden;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(900px 520px at 18% 18%, rgba(217,178,95,.18), transparent 60%),
+        radial-gradient(900px 520px at 85% 20%, rgba(240,208,138,.10), transparent 58%),
+        linear-gradient(to bottom, rgba(0,0,0,.38), rgba(0,0,0,.74));
+      z-index:0;
+    }
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:10;
+      padding:14px 0;
+      backdrop-filter:blur(14px);
+      background:rgba(10,12,16,.60);
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand img{
+      height:46px;
+      background:#fff;
+      padding:6px;
+      border-radius:14px;
+      box-shadow:0 0 14px rgba(217,178,95,.35);
+    }
+    .brand .t1{font-weight:700;line-height:1.1;margin:0}
+    .brand .t2{font-weight:600;font-size:.95rem;margin:0;color:rgba(240,208,138,.88)}
+
+    .btn-ghost,.btn-gold{
+      text-decoration:none;
+      border:none;
+      border-radius:999px;
+      padding:11px 18px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      font-weight:800;
+      cursor:pointer;
+      transition:transform .15s ease, filter .15s ease, background .15s ease;
+    }
+    .btn-ghost{
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.15);
+    }
+    .btn-ghost:hover{ transform:translateY(-1px); background:rgba(255,255,255,.10); color:var(--text); }
+
+    .btn-gold{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#0b0f18;
+      box-shadow:0 18px 35px rgba(217,178,95,.18);
+    }
+    .btn-gold:hover{ transform:translateY(-1px); filter:brightness(1.02); }
+
+    .page-wrap{
+      position:relative;
+      z-index:2;
+      padding:30px 12px 50px;
+    }
+
+    .container-box{
+      max-width:1140px;
+      margin:0 auto;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:28px;
+      backdrop-filter:blur(14px);
+      box-shadow:var(--shadow);
+      padding:28px;
+    }
+
+    .hero-success{
+      background:
+        linear-gradient(135deg, rgba(76,175,80,.10), rgba(217,178,95,.05)),
+        rgba(255,255,255,.04);
+      border:1px solid var(--successBorder);
+      border-radius:24px;
+      padding:28px;
+      margin-bottom:22px;
+    }
+
+    .badge-success{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      color:var(--success);
+      font-weight:800;
+      font-size:1rem;
+    }
+
+    .hero-success h1{
+      margin:14px 0 10px;
+      font-size:clamp(2rem, 4vw, 3rem);
+      font-weight:800;
+      letter-spacing:-.5px;
+    }
+
+    .hero-success p{
+      margin:0;
+      color:rgba(234,239,247,.86);
+      line-height:1.75;
+      font-size:1.05rem;
+      max-width:900px;
+    }
+
+    .hero-actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:24px;
+    }
+
+    .section{
+      margin-top:18px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:22px;
+      padding:20px;
+    }
+
+    .section h3{
+      margin:0 0 16px;
+      font-size:1.1rem;
+      font-weight:800;
+      color:rgba(240,208,138,.95);
+    }
+
+    .meta-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:14px;
+    }
+
+    .detail-card{
+      background:rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      padding:16px;
+    }
+
+    .detail-card .label{
+      color:var(--muted);
+      font-size:.9rem;
+      margin-bottom:8px;
+    }
+
+    .detail-card .value{
+      font-weight:800;
+      font-size:1rem;
+      line-height:1.55;
+      word-break:break-word;
+    }
+
+    .schedule-box{
+      background:rgba(217,178,95,.08);
+      border:1px solid rgba(217,178,95,.20);
+      border-radius:18px;
+      padding:18px;
+      line-height:1.9;
+      font-size:1.05rem;
+    }
+
+    .schedule-box strong{
+      color:#fff;
+    }
+
+    .payment-actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:18px;
+    }
+
+    .pay-remain-card{
+      margin-top:16px;
+      background:
+        linear-gradient(135deg, rgba(217,178,95,.12), rgba(240,208,138,.06)),
+        rgba(255,255,255,.04);
+      border:1px solid rgba(217,178,95,.24);
+      border-radius:20px;
+      padding:18px;
+    }
+
+    .pay-remain-title{
+      font-size:1rem;
+      font-weight:800;
+      color:rgba(240,208,138,.95);
+    }
+
+    .pay-remain-amount{
+      margin-top:8px;
+      font-size:2rem;
+      font-weight:800;
+      color:#fff;
+    }
+
+    .muted{
+      color:var(--muted);
+      line-height:1.75;
+    }
+
+    .day-card{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      padding:16px;
+      margin-bottom:12px;
+    }
+
+    .day-title{
+      font-weight:800;
+      margin-bottom:10px;
+      color:#fff;
+    }
+
+    .day-list{
+      margin:0;
+      padding-left:18px;
+      line-height:1.8;
+      color:rgba(234,239,247,.88);
+    }
+
+    .empty{
+      text-align:center;
+      padding:60px 20px;
+      color:var(--muted);
+      font-size:1.05rem;
+    }
+
+    .status-msg{
+      margin-top:14px;
+      padding:14px;
+      border-radius:16px;
+      font-weight:700;
+      display:none;
+    }
+
+    .status-ok{
+      background:rgba(24,100,46,.24);
+      border:1px solid rgba(129,231,162,.26);
+      color:#d8ffe7;
+    }
+
+    .status-err{
+      background:rgba(120,21,21,.22);
+      border:1px solid rgba(255,181,181,.24);
+      color:#ffd2d2;
+    }
+
+    @media (max-width: 768px){
+      .meta-grid{ grid-template-columns:1fr; }
+      .container-box{ padding:18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="container d-flex justify-content-between align-items-center">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" />
+        <div>
+          <p class="t1">Himalayan Kerala Expeditions</p>
+          <p class="t2">We Plan. We Care.</p>
+        </div>
+      </div>
+      <a href="index.html" class="btn-ghost">← Home</a>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="container-box" id="pageBox">
+      <div id="emptyState" class="empty" style="display:none;">
+        No payment confirmation found.
+        <div style="margin-top:16px;">
+          <a href="ai-planner.html" class="btn-gold">Go to AI Planner</a>
+        </div>
+      </div>
+
+      <div id="contentWrap" style="display:none;">
+        <div class="hero-success">
+          <div class="badge-success">✅ Payment Confirmed</div>
+          <h1>Thank you for your payment</h1>
+          <p id="heroText">Your payment has been received successfully. Our team will connect with you shortly for the next booking steps.</p>
+
+          <div class="hero-actions">
+            <a href="tel:+919797294747" class="btn-ghost">📞 Talk to Customer Care</a>
+            <a id="waBtnTop" href="#" target="_blank" class="btn-ghost">💬 WhatsApp</a>
+            <a href="itinerary-result.html" class="btn-gold">📄 View Itinerary</a>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Payment Summary</h3>
+          <div id="paymentGrid" class="meta-grid"></div>
+        </div>
+
+        <div class="section">
+          <h3>Trip Summary</h3>
+          <div id="tripGrid" class="meta-grid"></div>
+        </div>
+
+        <div class="section">
+          <h3>Remaining Payment Schedule</h3>
+          <div class="schedule-box">
+            <div><strong>Paid Now:</strong> <span id="paidNow">₹ 0</span></div>
+            <div><strong>Remaining Balance:</strong> <span id="remainNow">₹ 0</span></div>
+            <div><strong>Full Payment Deadline:</strong> <span id="deadlineDate">—</span></div>
+            <div style="margin-top:8px;">
+              <strong>Next Step:</strong>
+              <span id="nextStepText">Please clear the remaining balance on or before the deadline.</span>
+            </div>
+          </div>
+
+          <div id="remainingPayWrap" class="pay-remain-card">
+            <div class="pay-remain-title">Pay Remaining Balance</div>
+            <div id="remainingAmountBig" class="pay-remain-amount">₹ 0</div>
+            <div class="muted">
+              Use this payment button whenever you want to clear the pending package balance.
+            </div>
+
+            <div class="payment-actions">
+              <button id="payRemainingBtn" type="button" class="btn-gold">💳 Pay Remaining Balance</button>
+              <a id="waBtnBottom" href="#" target="_blank" class="btn-ghost">💬 WhatsApp for Support</a>
+            </div>
+
+            <div id="okMsg" class="status-msg status-ok"></div>
+            <div id="errMsg" class="status-msg status-err"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Day-wise Itinerary</h3>
+          <div id="daysWrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const COMPANY_PHONE = "919797294747";
+      const RAZORPAY_KEY_ID = "YOUR_RAZORPAY_KEY_ID";
+
+      const $ = (id) => document.getElementById(id);
+
+      function escapeHTML(str = "") {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function money(value) {
+        return "₹" + Number(value || 0).toLocaleString("en-IN");
+      }
+
+      function safeJSON(raw) {
+        try { return JSON.parse(raw); } catch { return null; }
+      }
+
+      function makeCard(label, value) {
+        return `
+          <div class="detail-card">
+            <div class="label">${escapeHTML(label)}</div>
+            <div class="value">${escapeHTML(value || "-")}</div>
+          </div>
+        `;
+      }
+
+      function addDays(dateStr, days) {
+        if (!dateStr) return "";
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime())) return "";
+        d.setDate(d.getDate() + Number(days || 0));
+        return d.toISOString().split("T")[0];
+      }
+
+      function parseTextItinerary(text = "") {
+        const clean = String(text || "").replace(/\r/g, "").trim();
+        if (!clean) return [];
+
+        const chunks = clean.split(/\n(?=Day\s*\d+)/i).filter(Boolean);
+
+        return chunks.map((chunk, idx) => {
+          const lines = chunk.split("\n").map(v => v.trim()).filter(Boolean);
+          const title = lines.shift() || `Day ${idx + 1}`;
+          return {
+            day: idx + 1,
+            title,
+            activities: lines.map(v => v.replace(/^[•\-\–—]\s*/, "")).filter(Boolean)
+          };
+        });
+      }
+
+      function buildWA(data, remaining) {
+        const c = data.customer || {};
+        const p = data.payment || {};
+        return `https://wa.me/${COMPANY_PHONE}?text=` + encodeURIComponent(
+          `Hello Himalayan Kerala Expeditions,\n\n` +
+          `I need support for my booking.\n\n` +
+          `Name: ${c.name || ""}\n` +
+          `Mobile: ${c.phone || ""}\n` +
+          `Destination: ${c.destination || ""}\n` +
+          `Paid Amount: ${money(p.paidAmount || 0)}\n` +
+          `Remaining Balance: ${money(remaining)}\n` +
+          `Payment ID: ${p.paymentId || ""}\n\n` +
+          `Please assist me with the next payment step.`
+        );
+      }
+
+      function renderDays(days) {
+        const wrap = $("daysWrap");
+        wrap.innerHTML = (days || []).map(day => `
+          <div class="day-card">
+            <div class="day-title">Day ${escapeHTML(day.day)} - ${escapeHTML(day.title || "")}</div>
+            <ul class="day-list">
+              ${(day.activities || []).map(a => `<li>${escapeHTML(a)}</li>`).join("")}
+            </ul>
+          </div>
+        `).join("");
+      }
+
+      function showMsg(ok, text) {
+        const okEl = $("okMsg");
+        const errEl = $("errMsg");
+        okEl.style.display = "none";
+        errEl.style.display = "none";
+
+        if (ok) {
+          okEl.textContent = text;
+          okEl.style.display = "block";
+        } else {
+          errEl.textContent = text;
+          errEl.style.display = "block";
+        }
+      }
+
+      function render() {
+        const data =
+          safeJSON(localStorage.getItem("hkeLastPaymentSuccess")) ||
+          safeJSON(localStorage.getItem("hkeLastConfirmedBooking"));
+
+        if (!data || !data.customer) {
+          $("emptyState").style.display = "block";
+          $("contentWrap").style.display = "none";
+          return;
+        }
+
+        const customer = data.customer || {};
+        const pricing = data.pricing || {};
+        const payment = data.payment || {};
+        const itinerary = data.itinerary || {};
+        const paidAmount = Number(payment.paidAmount || 0);
+        const total = Number(pricing.total || 0);
+        const remaining = Math.max(0, total - paidAmount);
+        const deadline = customer.startDate ? addDays(customer.startDate, -11) : "—";
+
+        const days = Array.isArray(itinerary.days) && itinerary.days.length
+          ? itinerary.days
+          : parseTextItinerary(itinerary.text || itinerary.raw || "");
+
+        $("heroText").textContent =
+          `Payment of ${money(paidAmount)} received for ${customer.destination || "your trip"}. Our team will contact you shortly for the next booking steps.`;
+
+        $("paymentGrid").innerHTML = [
+          makeCard("Payment Type", payment.paidAmount === pricing.advance ? "Advance" : "Custom"),
+          makeCard("Paid Amount", money(paidAmount)),
+          makeCard("Estimated Total Package", money(total)),
+          makeCard("Remaining Balance", money(remaining)),
+          makeCard("Razorpay Payment ID", payment.paymentId || "-"),
+          makeCard("Payment Date", payment.paidAt ? String(payment.paidAt).split("T")[0] : "-")
+        ].join("");
+
+        $("tripGrid").innerHTML = [
+          makeCard("Destination", customer.destination || "-"),
+          makeCard("Trip End Point", customer.endPoint || "-"),
+          makeCard("Travel Dates", `${customer.startDate || "-"} to ${customer.endDate || "-"}`),
+          makeCard("Travellers", String(customer.travellers || "-")),
+          makeCard("Rooms", String(customer.rooms || "-")),
+          makeCard("Hotel Category", customer.hotelClass || "-"),
+          makeCard("Vehicle", customer.vehicle || "-"),
+          makeCard("Budget Category", customer.budget || "-")
+        ].join("");
+
+        $("paidNow").textContent = money(paidAmount);
+        $("remainNow").textContent = money(remaining);
+        $("deadlineDate").textContent = deadline || "—";
+        $("remainingAmountBig").textContent = money(remaining);
+        $("nextStepText").textContent =
+          remaining > 0
+            ? `Remaining balance of ${money(remaining)} must be paid on or before ${deadline || "the due date"}.`
+            : "Your full payment has been completed.";
+
+        const wa = buildWA(data, remaining);
+        $("waBtnTop").href = wa;
+        $("waBtnBottom").href = wa;
+
+        if (remaining <= 0) {
+          $("remainingPayWrap").style.display = "none";
+        }
+
+        renderDays(days);
+
+        $("payRemainingBtn")?.addEventListener("click", () => {
+          if (RAZORPAY_KEY_ID === "YOUR_RAZORPAY_KEY_ID") {
+            showMsg(false, "Please add your Razorpay Key ID inside payment-confirmation.html before using live payment.");
+            return;
+          }
+
+          if (remaining <= 0) {
+            showMsg(false, "No remaining balance left to pay.");
+            return;
+          }
+
+          const options = {
+            key: RAZORPAY_KEY_ID,
+            amount: remaining * 100,
+            currency: "INR",
+            name: "Himalayan Kerala Expeditions",
+            description: "Remaining balance payment",
+            image: "media/logo.png",
+            handler: function (response) {
+              const newPaid = paidAmount + remaining;
+
+              const updated = {
+                ...data,
+                payment: {
+                  ...payment,
+                  status: "success",
+                  paymentId: response.razorpay_payment_id || payment.paymentId || "",
+                  paidAmount: newPaid,
+                  paidAt: new Date().toISOString(),
+                  finalBalancePaymentId: response.razorpay_payment_id || ""
+                }
+              };
+
+              localStorage.setItem("hkeLastPaymentSuccess", JSON.stringify(updated));
+              localStorage.setItem("hkeLastConfirmedBooking", JSON.stringify(updated));
+
+              showMsg(true, "Remaining balance paid successfully. The page will refresh now.");
+              setTimeout(() => window.location.reload(), 1000);
+            },
+            prefill: {
+              name: customer.name || "",
+              email: customer.email || "",
+              contact: customer.phone || ""
+            },
+            theme: {
+              color: "#D9B25F"
+            },
+            modal: {
+              ondismiss: function () {
+                showMsg(false, "Payment window closed before completing remaining balance payment.");
+              }
+            }
+          };
+
+          try {
+            const rzp = new Razorpay(options);
+            rzp.open();
+          } catch (err) {
+            showMsg(false, err?.message || "Unable to open payment window.");
+          }
+        });
+
+        $("emptyState").style.display = "none";
+        $("contentWrap").style.display = "block";
+      }
+
+      render();
+    })();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

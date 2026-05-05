@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Admin dashboard for Himalayan Kerala Expeditions" />
+  <link rel="icon" type="image/png" href="media/logo.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --bg0:#070A10;
+      --bg1:#0B0F18;
+      --panel:rgba(255,255,255,.05);
+      --panel2:rgba(255,255,255,.04);
+      --border:rgba(255,255,255,.08);
+      --text:#EAEFF7;
+      --muted:rgba(234,239,247,.68);
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --danger:#ef445a;
+      --success:#39d98a;
+      --radius:22px;
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      font-family:'Inter',sans-serif;
+      background:
+        radial-gradient(900px 500px at 20% 10%, rgba(217,178,95,.10), transparent 60%),
+        linear-gradient(180deg,var(--bg0),var(--bg1));
+      color:var(--text);
+    }
+
+    .navbar{
+      background:rgba(0,0,0,.35);
+      backdrop-filter:blur(10px);
+      border-bottom:1px solid rgba(255,255,255,.06);
+      padding:18px 0;
+    }
+
+    .brand{
+      color:#fff;
+      text-decoration:none;
+      font-weight:800;
+      font-size:1.1rem;
+    }
+
+    .brand span{
+      color:var(--gold2);
+    }
+
+    .page-wrap{
+      padding:32px 16px 50px;
+    }
+
+    .glass-card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:24px;
+      margin-bottom:24px;
+    }
+
+    .section-title{
+      color:var(--gold2);
+      font-weight:800;
+      margin-bottom:18px;
+    }
+
+    .sub-title{
+      font-weight:700;
+      margin-bottom:10px;
+      color:#fff;
+    }
+
+    .form-control,
+    .form-select,
+    textarea{
+      background:rgba(255,255,255,.07) !important;
+      border:1px solid rgba(255,255,255,.10) !important;
+      color:#fff !important;
+      border-radius:14px !important;
+      padding:13px 14px !important;
+    }
+
+    .form-control::placeholder,
+    textarea::placeholder{
+      color:rgba(255,255,255,.45) !important;
+    }
+
+    .form-select option{
+      color:#111;
+    }
+
+    .btn-gold{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#000;
+      font-weight:800;
+      border:none;
+      border-radius:999px;
+      padding:12px 24px;
+      cursor:pointer;
+    }
+
+    .btn-ghost{
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.08);
+      color:white;
+      border-radius:999px;
+      padding:12px 24px;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .btn-red{
+      background:var(--danger);
+      color:#fff;
+      border:none;
+      border-radius:999px;
+      padding:10px 20px;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .status-box{
+      margin-top:14px;
+      font-weight:700;
+      min-height:22px;
+    }
+
+    .preview-box{
+      background:var(--panel2);
+      padding:16px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.06);
+      margin-top:14px;
+    }
+
+    .item-card{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:16px;
+      padding:14px;
+      margin-bottom:12px;
+    }
+
+    .item-title{
+      font-weight:800;
+      color:var(--gold2);
+      margin-bottom:6px;
+    }
+
+    .item-text{
+      color:var(--muted);
+      line-height:1.7;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+
+    .pill{
+      display:inline-block;
+      padding:6px 12px;
+      border-radius:999px;
+      background:rgba(217,178,95,.14);
+      border:1px solid rgba(217,178,95,.16);
+      color:var(--gold2);
+      font-size:.85rem;
+      font-weight:700;
+      margin-right:6px;
+      margin-bottom:6px;
+    }
+
+    .pill-green{
+      background:rgba(57,217,138,.14);
+      border:1px solid rgba(57,217,138,.18);
+      color:#baf8d4;
+    }
+
+    .pill-red{
+      background:rgba(239,68,90,.14);
+      border:1px solid rgba(239,68,90,.18);
+      color:#ffd3db;
+    }
+
+    .pill-blue{
+      background:rgba(120,160,255,.14);
+      border:1px solid rgba(120,160,255,.18);
+      color:#d9e4ff;
+    }
+
+    .small-muted{
+      color:var(--muted);
+      font-size:.94rem;
+    }
+
+    .toolbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+
+    .alerts-grid{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+      margin-bottom:18px;
+    }
+
+    .alert-stat{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:16px;
+    }
+
+    .alert-stat strong{
+      display:block;
+      font-size:1.7rem;
+      color:var(--gold2);
+      margin-top:6px;
+    }
+
+    .alert-list{
+      display:grid;
+      gap:12px;
+    }
+
+    .alert-card{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-left:4px solid rgba(217,178,95,.7);
+      border-radius:16px;
+      padding:14px;
+    }
+
+    .alert-card.booking,
+    .alert-card.payment{
+      border-left-color:#F0D08A;
+      background:rgba(217,178,95,.10);
+    }
+
+    .alert-card.otp,
+    .alert-card.system{
+      border-left-color:#ef445a;
+      background:rgba(239,68,90,.10);
+    }
+
+    .alert-head{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:6px;
+      align-items:center;
+    }
+
+    .alert-title{
+      font-weight:800;
+      color:#fff;
+    }
+
+    .alert-meta{
+      color:var(--muted);
+      font-size:.92rem;
+    }
+
+    .req-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+
+    .req-actions button{
+      padding:9px 14px;
+      border-radius:999px;
+      border:none;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .btn-small-gold{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#000;
+    }
+
+    .btn-small-ghost{
+      background:rgba(255,255,255,.08);
+      color:#fff;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .btn-small-red{
+      background:rgba(239,68,90,.18);
+      color:#fff;
+      border:1px solid rgba(239,68,90,.18);
+    }
+
+    .btn-small-blue{
+      background:rgba(120,160,255,.18);
+      color:#fff;
+      border:1px solid rgba(120,160,255,.18);
+    }
+
+    .admin-note-box{
+      margin-top:10px;
+    }
+
+    .admin-note-box textarea{
+      min-height:90px;
+    }
+
+    footer{
+      text-align:center;
+      padding:25px;
+      color:var(--muted);
+      border-top:1px solid rgba(255,255,255,.06);
+    }
+
+    @media (max-width:768px){
+      .glass-card{
+        padding:18px;
+      }
+      .alerts-grid{
+        grid-template-columns:repeat(2,minmax(0,1fr));
+      }
+    }
+
+    @media (max-width:560px){
+      .alerts-grid{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+
+<link rel="stylesheet" href="css/hke-polish.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container-fluid px-4">
+    <a class="brand" href="index.html">HKE <span>Admin Dashboard</span></a>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn-ghost text-decoration-none" href="admin-crm.html">Open CRM</a>
+      <button class="btn-red" id="logoutBtn" type="button">Logout</button>
+    </div>
+  </div>
+</nav>
+
+<div class="page-wrap container">
+
+  <!-- Welcome -->
+  <div class="glass-card">
+    <h3 class="section-title">Welcome Admin</h3>
+    <p id="adminUser" class="mb-1">Loading admin details...</p>
+    <p class="small-muted mb-0">Use this dashboard to manage homepage packages, images, AI planner destinations, pilgrimage packages, tour package content, and itinerary change requests.</p>
+  </div>
+
+  <div class="glass-card">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <div>
+        <h3 class="section-title mb-1">Admin Alerts</h3>
+        <div class="small-muted">Latest alerts from enquiries, bookings, payments, contact leads, and OTP/system failures.</div>
+      </div>
+      <button class="btn-gold" id="refreshAlertsBtn" type="button">Refresh Alerts</button>
+    </div>
+    <div class="alerts-grid">
+      <div class="alert-stat">
+        <div class="small-muted">Total Alerts</div>
+        <strong id="alertsTotalCount">0</strong>
+      </div>
+      <div class="alert-stat">
+        <div class="small-muted">New Enquiries</div>
+        <strong id="alertsEnquiryCount">0</strong>
+      </div>
+      <div class="alert-stat">
+        <div class="small-muted">Bookings / Payments</div>
+        <strong id="alertsBookingPaymentCount">0</strong>
+      </div>
+      <div class="alert-stat">
+        <div class="small-muted">OTP / System</div>
+        <strong id="alertsOtpSystemCount">0</strong>
+      </div>
+    </div>
+    <div id="alertsStatus" class="status-box"></div>
+    <div id="alertsList" class="alert-list preview-box">Loading alerts...</div>
+  </div>
+
+  <!-- Homepage Packages -->
+  <div class="glass-card">
+    <h4 class="section-title">Change Homepage Packages</h4>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="sub-title">Package Key</label>
+        <select id="homePackageKey" class="form-select">
+          <option value="kashmir">Kashmir</option>
+          <option value="manali">Manali</option>
+          <option value="kerala">Kerala</option>
+          <option value="himachal">Shimla Manali Dharamshala</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Package Name</label>
+        <input type="text" id="homePackageName" class="form-control" placeholder="Enter package name">
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Package Price</label>
+        <input type="text" id="homePackagePrice" class="form-control" placeholder="Enter package price">
+      </div>
+      <div class="col-md-12">
+        <label class="sub-title">Package Description</label>
+        <textarea id="homePackageDesc" class="form-control" rows="4" placeholder="Enter package description"></textarea>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="saveHomepagePackage()">Save Homepage Package</button>
+      <button class="btn-ghost" onclick="loadHomepagePackage()">Load Selected Package</button>
+    </div>
+
+    <div id="homePackageStatus" class="status-box"></div>
+    <div id="homePackagePreview" class="preview-box"></div>
+  </div>
+
+  <!-- Upload Images -->
+  <div class="glass-card">
+    <h4 class="section-title">Upload Images / Change Website Images</h4>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="sub-title">Section</label>
+        <select id="imageSection" class="form-select">
+          <option value="homepage">Homepage</option>
+          <option value="kashmir-package">Kashmir Package</option>
+          <option value="manali-package">Manali Package</option>
+          <option value="kerala-package">Kerala Package</option>
+          <option value="himachal-package">Shimla Manali Dharamshala Package</option>
+          <option value="ai-planner">AI Planner</option>
+          <option value="pilgrimage">Pilgrimage</option>
+        </select>
+      </div>
+      <div class="col-md-8">
+        <label class="sub-title">Image Path / File Name</label>
+        <input type="text" id="imageFile" class="form-control" placeholder="example: media/new-image.png">
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="saveImageUpdate()">Save Image Entry</button>
+    </div>
+
+    <div id="imageStatus" class="status-box"></div>
+    <div id="imagePreview" class="preview-box"></div>
+  </div>
+
+  <!-- AI Planner Dropdown -->
+  <div class="glass-card">
+    <h4 class="section-title">Edit AI Planner Dropdowns</h4>
+    <p class="small-muted">Add destinations that should appear inside the AI planner dropdown and destination selection area.</p>
+
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="sub-title">New Destination</label>
+        <input type="text" id="newDestination" class="form-control" placeholder="Enter new destination name">
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">State / Category</label>
+        <select id="destinationState" class="form-select">
+          <option value="Himachal">Himachal</option>
+          <option value="Kashmir">Kashmir</option>
+          <option value="Kerala">Kerala</option>
+          <option value="Uttarakhand">Uttarakhand</option>
+          <option value="Pilgrimage">Pilgrimage</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="addDestination()">Add Destination</button>
+      <button class="btn-ghost" onclick="renderDestinations()">Refresh List</button>
+    </div>
+
+    <div id="destinationStatus" class="status-box"></div>
+    <div id="destinationList" class="preview-box"></div>
+  </div>
+
+  <!-- Add Edit Delete Tour Packages -->
+  <div class="glass-card">
+    <h4 class="section-title">Add / Edit / Delete Tour Packages</h4>
+
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="sub-title">Package ID</label>
+        <input type="text" id="tourId" class="form-control" placeholder="example: leh-ladakh">
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Package Title</label>
+        <input type="text" id="tourTitle" class="form-control" placeholder="Enter package title">
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Price</label>
+        <input type="text" id="tourPrice" class="form-control" placeholder="Enter price">
+      </div>
+
+      <div class="col-md-6">
+        <label class="sub-title">Route</label>
+        <input type="text" id="tourRoute" class="form-control" placeholder="Enter route">
+      </div>
+      <div class="col-md-6">
+        <label class="sub-title">Image Path</label>
+        <input type="text" id="tourImage" class="form-control" placeholder="example: media/tour.png">
+      </div>
+
+      <div class="col-md-12">
+        <label class="sub-title">Description</label>
+        <textarea id="tourDesc" class="form-control" rows="4" placeholder="Enter package description"></textarea>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="saveTourPackage()">Save Package</button>
+      <button class="btn-ghost" onclick="renderTourPackages()">Show Packages</button>
+      <button class="btn-red" onclick="deleteTourPackage()">Delete Package</button>
+    </div>
+
+    <div id="tourStatus" class="status-box"></div>
+    <div id="tourList" class="preview-box"></div>
+  </div>
+
+  <!-- Pilgrimage Packages -->
+  <div class="glass-card">
+    <h4 class="section-title">Edit Pilgrimage Packages</h4>
+
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="sub-title">Pilgrimage Package Name</label>
+        <input type="text" id="pilgrimageName" class="form-control" placeholder="Enter pilgrimage package name">
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Religion Type</label>
+        <select id="pilgrimageReligion" class="form-select">
+          <option value="Hindu">Hindu</option>
+          <option value="Christian">Christian</option>
+          <option value="Muslim">Muslim</option>
+          <option value="Mixed">Mixed</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="sub-title">Price</label>
+        <input type="text" id="pilgrimagePrice" class="form-control" placeholder="Enter price">
+      </div>
+
+      <div class="col-md-12">
+        <label class="sub-title">Pilgrimage Details</label>
+        <textarea id="pilgrimageDesc" class="form-control" rows="4" placeholder="Enter pilgrimage package details"></textarea>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="savePilgrimagePackage()">Save Pilgrimage Package</button>
+      <button class="btn-ghost" onclick="renderPilgrimagePackages()">Show Pilgrimage Packages</button>
+    </div>
+
+    <div id="pilgrimageStatus" class="status-box"></div>
+    <div id="pilgrimageList" class="preview-box"></div>
+  </div>
+
+  <!-- Itinerary Change Requests -->
+  <div class="glass-card">
+    <h4 class="section-title">Itinerary Change Requests</h4>
+    <p class="small-muted">Review customer post-booking itinerary change requests and approve, reject, or mark them under review.</p>
+
+    <div class="toolbar">
+      <button class="btn-gold" onclick="loadItineraryRequests()">Load Change Requests</button>
+    </div>
+
+    <div id="itineraryRequestStatus" class="status-box"></div>
+    <div id="itineraryRequestsList" class="preview-box">No itinerary change requests loaded.</div>
+  </div>
+
+  <!-- Recent Bookings -->
+  <div class="glass-card">
+    <h4 class="section-title">Recent Bookings</h4>
+    <div class="toolbar">
+      <button class="btn-gold" onclick="loadBookings()">Load Bookings</button>
+    </div>
+    <div id="bookingList" class="preview-box">No bookings loaded.</div>
+  </div>
+</div>
+
+<footer>
+  © Himalayan Kerala Expeditions | We Plan. We Care.
+</footer>
+
+<script>
+const API_BASE = "https://hke-backend.onrender.com";
+const ADMIN_CONTENT_API = API_BASE + "/api/admin/content";
+const ADMIN_ALERTS_API = API_BASE + "/api/admin/alerts";
+
+const token = localStorage.getItem("HKE_ADMIN_TOKEN");
+const adminUser = localStorage.getItem("HKE_ADMIN_USER");
+
+if (!token) {
+  alert("Admin login required");
+  window.location.href = "admin-login.html";
+}
+
+document.getElementById("adminUser").innerText = "Logged in as: " + (adminUser || "admin");
+
+// Logout
+document.getElementById("logoutBtn").addEventListener("click", async function () {
+  try {
+    await fetch(API_BASE + "/api/admin/logout", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + token
+      }
+    });
+  } catch (e) {}
+
+  localStorage.removeItem("HKE_ADMIN_TOKEN");
+  localStorage.removeItem("HKE_ADMIN_USER");
+  window.location.href = "admin-login.html";
+});
+
+// -------- Local Storage Keys --------
+const HOME_PACKAGES_KEY = "HKE_ADMIN_HOME_PACKAGES";
+const IMAGES_KEY = "HKE_ADMIN_IMAGES";
+const DESTINATIONS_KEY = "HKE_ADMIN_DESTINATIONS";
+const TOUR_PACKAGES_KEY = "HKE_ADMIN_TOUR_PACKAGES";
+const PILGRIMAGE_PACKAGES_KEY = "HKE_ADMIN_PILGRIMAGE_PACKAGES";
+const ADMIN_CONTENT_MAP = {
+  [HOME_PACKAGES_KEY]: "homepage_packages",
+  [IMAGES_KEY]: "images",
+  [DESTINATIONS_KEY]: "ai_destinations",
+  [TOUR_PACKAGES_KEY]: "tour_packages",
+  [PILGRIMAGE_PACKAGES_KEY]: "pilgrimage_packages"
+};
+
+// -------- Helpers --------
+function setStatus(id, text, isError = false) {
+  const el = document.getElementById(id);
+  el.innerText = text;
+  el.style.color = isError ? "#ffb3b3" : "#8ff0bf";
+}
+
+function getStore(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStore(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function getJSON(url) {
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": "Bearer " + token
+    }
+  });
+
+  const txt = await res.text();
+  let data = null;
+
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = { raw: txt };
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.detail || data?.message || "Request failed");
+  }
+
+  return data;
+}
+
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify(body)
+  });
+
+  const txt = await res.text();
+  let data = null;
+
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = { raw: txt };
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.detail || data?.message || "Request failed");
+  }
+
+  return data;
+}
+
+async function hydrateAdminContentFromBackend() {
+  try {
+    const data = await getJSON(ADMIN_CONTENT_API);
+    saveStore(HOME_PACKAGES_KEY, data.homepage_packages || {});
+    saveStore(IMAGES_KEY, data.images || {});
+    saveStore(DESTINATIONS_KEY, data.ai_destinations || []);
+    saveStore(TOUR_PACKAGES_KEY, data.tour_packages || {});
+    saveStore(PILGRIMAGE_PACKAGES_KEY, data.pilgrimage_packages || []);
+  } catch (err) {
+    console.warn("Unable to hydrate admin content from backend.", err);
+  }
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function renderAlerts(alerts) {
+  const items = Array.isArray(alerts) ? alerts : [];
+  const enquiryCount = items.filter(item => item.type === "enquiry" || item.type === "contact").length;
+  const bookingPaymentCount = items.filter(item => item.type === "booking" || item.type === "payment").length;
+  const otpSystemCount = items.filter(item => item.type === "otp" || item.type === "system").length;
+
+  setText("alertsTotalCount", String(items.length));
+  setText("alertsEnquiryCount", String(enquiryCount));
+  setText("alertsBookingPaymentCount", String(bookingPaymentCount));
+  setText("alertsOtpSystemCount", String(otpSystemCount));
+
+  const wrap = document.getElementById("alertsList");
+  if (!items.length) {
+    wrap.innerHTML = "No alerts found.";
+    return;
+  }
+
+  wrap.innerHTML = items.map(item => `
+    <div class="alert-card ${item.type || "system"}">
+      <div class="alert-head">
+        <div class="alert-title">${item.title || "Alert"}</div>
+        <div>${priorityPill(item.priority || "medium")}</div>
+      </div>
+      <div class="item-text">${item.message || "-"}</div>
+      <div class="alert-meta mt-2">Phone: ${item.phone || "-"} | ${item.createdAt || "-"}</div>
+    </div>
+  `).join("");
+}
+
+async function loadAdminAlerts() {
+  try {
+    setStatus("alertsStatus", "Loading alerts...");
+    const data = await getJSON(ADMIN_ALERTS_API);
+    renderAlerts(data.alerts || []);
+    setStatus("alertsStatus", "Alerts loaded successfully.");
+  } catch (err) {
+    document.getElementById("alertsList").innerHTML = "Unable to load alerts.";
+    setStatus("alertsStatus", err.message || "Unable to load alerts.", true);
+  }
+}
+
+async function syncStoreToBackend(localKey) {
+  const section = ADMIN_CONTENT_MAP[localKey];
+  if (!section) return;
+  const listSections = {
+    ai_destinations: true,
+    pilgrimage_packages: true
+  };
+  const data = getStore(localKey, listSections[section] ? [] : {});
+  await postJSON(ADMIN_CONTENT_API + "/" + section, { data });
+}
+
+// -------- Homepage Packages --------
+async function saveHomepagePackage() {
+  const key = document.getElementById("homePackageKey").value;
+  const name = document.getElementById("homePackageName").value.trim();
+  const price = document.getElementById("homePackagePrice").value.trim();
+  const desc = document.getElementById("homePackageDesc").value.trim();
+
+  if (!name || !price || !desc) {
+    setStatus("homePackageStatus", "Please fill all homepage package fields.", true);
+    return;
+  }
+
+  const data = getStore(HOME_PACKAGES_KEY, {});
+  data[key] = { name, price, desc };
+  saveStore(HOME_PACKAGES_KEY, data);
+  try {
+    await syncStoreToBackend(HOME_PACKAGES_KEY);
+    setStatus("homePackageStatus", "Homepage package saved successfully.");
+    loadHomepagePackage();
+  } catch (err) {
+    setStatus("homePackageStatus", err.message || "Unable to sync homepage package.", true);
+  }
+}
+
+function loadHomepagePackage() {
+  const key = document.getElementById("homePackageKey").value;
+  const data = getStore(HOME_PACKAGES_KEY, {});
+  const item = data[key];
+
+  if (item) {
+    document.getElementById("homePackageName").value = item.name || "";
+    document.getElementById("homePackagePrice").value = item.price || "";
+    document.getElementById("homePackageDesc").value = item.desc || "";
+    document.getElementById("homePackagePreview").innerHTML = `
+      <div class="item-card">
+        <div class="item-title">${item.name}</div>
+        <div class="pill">Price: ${item.price}</div>
+        <div class="item-text mt-2">${item.desc}</div>
+      </div>
+    `;
+  } else {
+    document.getElementById("homePackagePreview").innerHTML = "No saved homepage package data for this option.";
+  }
+}
+
+document.getElementById("homePackageKey").addEventListener("change", loadHomepagePackage);
+
+// -------- Images --------
+async function saveImageUpdate() {
+  const section = document.getElementById("imageSection").value;
+  const file = document.getElementById("imageFile").value.trim();
+
+  if (!file) {
+    setStatus("imageStatus", "Please enter image path or file name.", true);
+    return;
+  }
+
+  const data = getStore(IMAGES_KEY, {});
+  data[section] = file;
+  saveStore(IMAGES_KEY, data);
+  try {
+    await syncStoreToBackend(IMAGES_KEY);
+    setStatus("imageStatus", "Image reference saved successfully.");
+    renderImagePreview();
+  } catch (err) {
+    setStatus("imageStatus", err.message || "Unable to sync image reference.", true);
+  }
+}
+
+function renderImagePreview() {
+  const data = getStore(IMAGES_KEY, {});
+  let html = "";
+
+  const keys = Object.keys(data);
+  if (!keys.length) {
+    html = "No image updates saved yet.";
+  } else {
+    keys.forEach(key => {
+      html += `
+        <div class="item-card">
+          <div class="item-title">${key}</div>
+          <div class="item-text">${data[key]}</div>
+        </div>
+      `;
+    });
+  }
+
+  document.getElementById("imagePreview").innerHTML = html;
+}
+
+// -------- Destinations --------
+async function addDestination() {
+  const destination = document.getElementById("newDestination").value.trim();
+  const state = document.getElementById("destinationState").value;
+
+  if (!destination) {
+    setStatus("destinationStatus", "Please enter a destination name.", true);
+    return;
+  }
+
+  const items = getStore(DESTINATIONS_KEY, []);
+  items.push({ destination, state });
+  saveStore(DESTINATIONS_KEY, items);
+  try {
+    await syncStoreToBackend(DESTINATIONS_KEY);
+    document.getElementById("newDestination").value = "";
+    setStatus("destinationStatus", "Destination added successfully.");
+    renderDestinations();
+  } catch (err) {
+    setStatus("destinationStatus", err.message || "Unable to sync destination.", true);
+  }
+}
+
+function renderDestinations() {
+  const items = getStore(DESTINATIONS_KEY, []);
+  if (!items.length) {
+    document.getElementById("destinationList").innerHTML = "No destinations added yet.";
+    return;
+  }
+
+  let html = "";
+  items.forEach((item, index) => {
+    html += `
+      <div class="item-card">
+        <div class="item-title">${item.destination}</div>
+        <div class="pill">${item.state}</div>
+        <div class="toolbar">
+          <button class="btn-red" onclick="deleteDestination(${index})">Delete</button>
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById("destinationList").innerHTML = html;
+}
+
+async function deleteDestination(index) {
+  const items = getStore(DESTINATIONS_KEY, []);
+  items.splice(index, 1);
+  saveStore(DESTINATIONS_KEY, items);
+  try {
+    await syncStoreToBackend(DESTINATIONS_KEY);
+    renderDestinations();
+    setStatus("destinationStatus", "Destination removed successfully.");
+  } catch (err) {
+    setStatus("destinationStatus", err.message || "Unable to sync destination removal.", true);
+  }
+}
+
+// -------- Tour Packages --------
+async function saveTourPackage() {
+  const id = document.getElementById("tourId").value.trim();
+  const title = document.getElementById("tourTitle").value.trim();
+  const price = document.getElementById("tourPrice").value.trim();
+  const route = document.getElementById("tourRoute").value.trim();
+  const image = document.getElementById("tourImage").value.trim();
+  const desc = document.getElementById("tourDesc").value.trim();
+
+  if (!id || !title || !price || !route || !image || !desc) {
+    setStatus("tourStatus", "Please fill all package fields.", true);
+    return;
+  }
+
+  const items = getStore(TOUR_PACKAGES_KEY, {});
+  items[id] = { title, price, route, image, desc };
+  saveStore(TOUR_PACKAGES_KEY, items);
+  try {
+    await syncStoreToBackend(TOUR_PACKAGES_KEY);
+    setStatus("tourStatus", "Tour package saved successfully.");
+    renderTourPackages();
+  } catch (err) {
+    setStatus("tourStatus", err.message || "Unable to sync tour package.", true);
+  }
+}
+
+function renderTourPackages() {
+  const items = getStore(TOUR_PACKAGES_KEY, {});
+  const keys = Object.keys(items);
+
+  if (!keys.length) {
+    document.getElementById("tourList").innerHTML = "No tour packages saved yet.";
+    return;
+  }
+
+  let html = "";
+  keys.forEach(key => {
+    const item = items[key];
+    html += `
+      <div class="item-card">
+        <div class="item-title">${item.title}</div>
+        <div class="pill">ID: ${key}</div>
+        <div class="pill">Price: ${item.price}</div>
+        <div class="item-text"><strong>Route:</strong> ${item.route}</div>
+        <div class="item-text"><strong>Image:</strong> ${item.image}</div>
+        <div class="item-text mt-2">${item.desc}</div>
+      </div>
+    `;
+  });
+
+  document.getElementById("tourList").innerHTML = html;
+}
+
+async function deleteTourPackage() {
+  const id = document.getElementById("tourId").value.trim();
+  if (!id) {
+    setStatus("tourStatus", "Enter Package ID to delete.", true);
+    return;
+  }
+
+  const items = getStore(TOUR_PACKAGES_KEY, {});
+  if (!items[id]) {
+    setStatus("tourStatus", "Package ID not found.", true);
+    return;
+  }
+
+  delete items[id];
+  saveStore(TOUR_PACKAGES_KEY, items);
+  try {
+    await syncStoreToBackend(TOUR_PACKAGES_KEY);
+    setStatus("tourStatus", "Tour package deleted successfully.");
+    renderTourPackages();
+  } catch (err) {
+    setStatus("tourStatus", err.message || "Unable to sync tour package deletion.", true);
+  }
+}
+
+// -------- Pilgrimage Packages --------
+async function savePilgrimagePackage() {
+  const name = document.getElementById("pilgrimageName").value.trim();
+  const religion = document.getElementById("pilgrimageReligion").value;
+  const price = document.getElementById("pilgrimagePrice").value.trim();
+  const desc = document.getElementById("pilgrimageDesc").value.trim();
+
+  if (!name || !price || !desc) {
+    setStatus("pilgrimageStatus", "Please fill all pilgrimage package fields.", true);
+    return;
+  }
+
+  const items = getStore(PILGRIMAGE_PACKAGES_KEY, []);
+  items.push({ name, religion, price, desc });
+  saveStore(PILGRIMAGE_PACKAGES_KEY, items);
+  try {
+    await syncStoreToBackend(PILGRIMAGE_PACKAGES_KEY);
+    setStatus("pilgrimageStatus", "Pilgrimage package saved successfully.");
+    renderPilgrimagePackages();
+  } catch (err) {
+    setStatus("pilgrimageStatus", err.message || "Unable to sync pilgrimage package.", true);
+  }
+}
+
+function renderPilgrimagePackages() {
+  const items = getStore(PILGRIMAGE_PACKAGES_KEY, []);
+  if (!items.length) {
+    document.getElementById("pilgrimageList").innerHTML = "No pilgrimage packages saved yet.";
+    return;
+  }
+
+  let html = "";
+  items.forEach((item, index) => {
+    html += `
+      <div class="item-card">
+        <div class="item-title">${item.name}</div>
+        <div class="pill">${item.religion}</div>
+        <div class="pill">Price: ${item.price}</div>
+        <div class="item-text mt-2">${item.desc}</div>
+        <div class="toolbar">
+          <button class="btn-red" onclick="deletePilgrimage(${index})">Delete</button>
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById("pilgrimageList").innerHTML = html;
+}
+
+async function deletePilgrimage(index) {
+  const items = getStore(PILGRIMAGE_PACKAGES_KEY, []);
+  items.splice(index, 1);
+  saveStore(PILGRIMAGE_PACKAGES_KEY, items);
+  try {
+    await syncStoreToBackend(PILGRIMAGE_PACKAGES_KEY);
+    renderPilgrimagePackages();
+    setStatus("pilgrimageStatus", "Pilgrimage package deleted successfully.");
+  } catch (err) {
+    setStatus("pilgrimageStatus", err.message || "Unable to sync pilgrimage package deletion.", true);
+  }
+}
+
+// -------- Itinerary Requests --------
+function statusPill(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return `<span class="pill pill-green">approved</span>`;
+  if (s === "rejected") return `<span class="pill pill-red">rejected</span>`;
+  if (s === "under_review") return `<span class="pill pill-blue">under review</span>`;
+  return `<span class="pill">pending</span>`;
+}
+
+function priorityPill(priority) {
+  const value = String(priority || "").toLowerCase();
+  if (value === "high") return `<span class="pill pill-red">high</span>`;
+  if (value === "medium") return `<span class="pill pill-blue">medium</span>`;
+  return `<span class="pill">low</span>`;
+}
+
+async function loadItineraryRequests() {
+  try {
+    setStatus("itineraryRequestStatus", "Loading itinerary change requests...");
+    const data = await getJSON(API_BASE + "/api/admin/itinerary-requests");
+
+    if (!data.ok || !Array.isArray(data.items) || !data.items.length) {
+      document.getElementById("itineraryRequestsList").innerHTML = "No itinerary change requests found.";
+      setStatus("itineraryRequestStatus", "No itinerary change requests found.");
+      return;
+    }
+
+    let html = "";
+    data.items.forEach(item => {
+      html += `
+        <div class="item-card">
+          <div class="item-title">${item.customer_name || "Customer"}</div>
+          <div>
+            ${statusPill(item.status)}
+            <span class="pill">Booking: ${item.booking_ref || "-"}</span>
+            <span class="pill">${item.destination || "-"}</span>
+          </div>
+
+          <div class="item-text"><strong>Phone:</strong> ${item.customer_phone || "-"}</div>
+          <div class="item-text"><strong>Request:</strong> ${item.request_text || "-"}</div>
+          <div class="item-text"><strong>Admin Note:</strong> ${item.admin_note || "-"}</div>
+          <div class="item-text"><strong>Created:</strong> ${item.created_at || "-"}</div>
+
+          <div class="admin-note-box">
+            <textarea id="adminNote_${item.id}" class="form-control" rows="3" placeholder="Write admin note before updating status...">${item.admin_note || ""}</textarea>
+          </div>
+
+          <div class="req-actions">
+            <button class="btn-small-ghost" onclick="reviewItineraryRequest(${item.id}, 'pending')">Mark Pending</button>
+            <button class="btn-small-blue" onclick="reviewItineraryRequest(${item.id}, 'under_review')">Under Review</button>
+            <button class="btn-small-gold" onclick="reviewItineraryRequest(${item.id}, 'approved')">Approve</button>
+            <button class="btn-small-red" onclick="reviewItineraryRequest(${item.id}, 'rejected')">Reject</button>
+          </div>
+        </div>
+      `;
+    });
+
+    document.getElementById("itineraryRequestsList").innerHTML = html;
+    setStatus("itineraryRequestStatus", "Itinerary change requests loaded successfully.");
+  } catch (err) {
+    document.getElementById("itineraryRequestsList").innerHTML = "Unable to load itinerary change requests.";
+    setStatus("itineraryRequestStatus", err.message || "Unable to load itinerary change requests.", true);
+  }
+}
+
+async function reviewItineraryRequest(requestId, status) {
+  try {
+    const noteEl = document.getElementById("adminNote_" + requestId);
+    const admin_note = noteEl ? noteEl.value.trim() : "";
+
+    await postJSON(API_BASE + "/api/admin/itinerary-requests/" + requestId + "/review", {
+      status,
+      admin_note
+    });
+
+    setStatus("itineraryRequestStatus", "Itinerary request updated successfully.");
+    loadItineraryRequests();
+  } catch (err) {
+    setStatus("itineraryRequestStatus", err.message || "Unable to update itinerary request.", true);
+  }
+}
+
+// -------- Load bookings from backend --------
+async function loadBookings() {
+  try {
+    let res = await fetch(API_BASE + "/api/admin/bookings", {
+      headers:{
+        "Authorization":"Bearer " + token
+      }
+    });
+
+    let data = await res.json();
+
+    if(!data.ok){
+      document.getElementById("bookingList").innerHTML = "Unable to load bookings.";
+      return;
+    }
+
+    if(!data.items || !data.items.length){
+      document.getElementById("bookingList").innerHTML = "No bookings found.";
+      return;
+    }
+
+    let html = "";
+    data.items.forEach(item=>{
+      html += `
+        <div class="item-card">
+          <div class="item-title">${item.customer_name || "Customer"}</div>
+          <div class="pill">${item.destination || "Destination"}</div>
+          <div class="pill">${item.payment_type || "Payment"}</div>
+          <div class="item-text"><strong>Phone:</strong> ${item.customer_phone || "-"}</div>
+          <div class="item-text"><strong>Trip:</strong> ${item.trip_name || "-"}</div>
+          <div class="item-text"><strong>Total:</strong> ₹${item.total_amount || 0}</div>
+          <div class="item-text"><strong>Paid:</strong> ₹${item.paid_amount || 0}</div>
+          <div class="item-text"><strong>Remaining:</strong> ₹${item.remaining_amount || 0}</div>
+          <div class="item-text"><strong>Travel:</strong> ${item.start_date || "-"} to ${item.end_date || "-"}</div>
+        </div>
+      `;
+    });
+
+    document.getElementById("bookingList").innerHTML = html;
+
+  } catch(err) {
+    document.getElementById("bookingList").innerHTML = "Error loading bookings.";
+  }
+}
+
+// -------- Initial renders --------
+hydrateAdminContentFromBackend().finally(() => {
+  loadHomepagePackage();
+  renderImagePreview();
+  renderDestinations();
+  renderTourPackages();
+  renderPilgrimagePackages();
+  loadAdminAlerts();
+});
+
+document.getElementById("refreshAlertsBtn").addEventListener("click", loadAdminAlerts);
+window.setInterval(loadAdminAlerts, 30000);
+</script>
+
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

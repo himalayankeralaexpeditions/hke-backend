@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Leh Ladakh Circuit | Himalayan Kerala Expeditions</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Explore premium Leh Ladakh circuit packages from Srinagar and Manali with own car, bike rental, own bike, and HKE transport options."
+  />
+
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --bg0:#070A10;
+      --bg1:#0B0F18;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.10);
+      --text:#EAEFF7;
+      --muted: rgba(234,239,247,.72);
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --shadow: 0 18px 55px rgba(0,0,0,.45);
+      --shadowSoft: 0 14px 40px rgba(0,0,0,.25);
+      --radius: 18px;
+      --radius2: 22px;
+    }
+
+    *{ box-sizing:border-box; }
+    html, body{ scroll-behavior:smooth; }
+    body{
+      margin:0;
+      font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1100px 620px at 15% 10%, rgba(217,178,95,.12), transparent 60%),
+        radial-gradient(900px 520px at 85% 12%, rgba(240,208,138,.08), transparent 55%),
+        radial-gradient(900px 600px at 50% 100%, rgba(217,178,95,.06), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x:hidden;
+    }
+
+    a{ color:inherit; text-decoration:none; }
+    img{ max-width:100%; display:block; }
+    .container{ max-width:1120px; }
+
+    .nav-wrap{
+      position:sticky;
+      top:0;
+      z-index:1000;
+      backdrop-filter:blur(14px);
+      background:rgba(7,10,16,.58);
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+
+    .navbar{ padding:14px 0; }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      text-decoration:none;
+    }
+
+    .brand img{
+      height:46px;
+      width:46px;
+      object-fit:contain;
+      background:rgba(255,255,255,.92);
+      border-radius:14px;
+      padding:7px;
+      box-shadow:0 0 0 1px rgba(217,178,95,.35), 0 18px 40px rgba(0,0,0,.35);
+    }
+
+    .brand .t1{
+      font-size:1.02rem;
+      font-weight:700;
+      margin:0;
+      line-height:1.1;
+    }
+
+    .brand .t2{
+      font-size:.88rem;
+      font-weight:500;
+      color:rgba(240,208,138,.88);
+      margin:0;
+      line-height:1.15;
+    }
+
+    .nav-link{
+      color:rgba(234,239,247,.82)!important;
+      font-weight:500;
+    }
+
+    .nav-link:hover{ color:var(--gold2)!important; }
+
+    .hero{
+      position:relative;
+      padding:96px 0 82px;
+      overflow:hidden;
+    }
+
+    .hero::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.78), rgba(0,0,0,.35)),
+        url("media/leh-ladakh2.png") center/cover no-repeat;
+      transform:scale(1.03);
+      filter:saturate(1.05) contrast(1.04);
+    }
+
+    .hero::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(650px 350px at 22% 30%, rgba(217,178,95,.20), transparent 60%),
+        radial-gradient(700px 360px at 75% 25%, rgba(240,208,138,.14), transparent 60%);
+      opacity:.75;
+      pointer-events:none;
+    }
+
+    .hero > .container{ position:relative; z-index:2; }
+
+    .hero-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid rgba(217,178,95,.25);
+      background:rgba(0,0,0,.35);
+      backdrop-filter:blur(10px);
+      color:rgba(234,239,247,.92);
+      font-weight:500;
+      font-size:.92rem;
+      box-shadow:var(--shadowSoft);
+    }
+
+    .hero-title{
+      margin-top:14px;
+      font-size:clamp(2.2rem, 4vw, 3.3rem);
+      line-height:1.08;
+      font-weight:800;
+      letter-spacing:-0.7px;
+      text-shadow:0 22px 65px rgba(0,0,0,.55);
+      max-width:900px;
+    }
+
+    .hero-sub{
+      margin-top:12px;
+      max-width:840px;
+      color:rgba(234,239,247,.86);
+      font-size:1.06rem;
+      line-height:1.7;
+    }
+
+    .hero-actions{
+      margin-top:22px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .btn-lux{
+      border-radius:999px;
+      padding:12px 18px;
+      font-weight:700;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      transition:transform .18s ease, box-shadow .18s ease;
+      user-select:none;
+      cursor:pointer;
+      border:none;
+    }
+
+    .btn-lux:hover{ transform:translateY(-1px); }
+
+    .btn-lux-primary{
+      background:linear-gradient(135deg, var(--gold), var(--gold2));
+      color:#0b0f18;
+      box-shadow:0 22px 50px rgba(217,178,95,.20);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .btn-lux-ghost{
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.14);
+      color:rgba(234,239,247,.95);
+      backdrop-filter:blur(10px);
+    }
+
+    .section-title{
+      margin:48px 0 18px;
+      font-weight:800;
+      letter-spacing:-0.5px;
+      color:rgba(240,208,138,.96);
+      text-align:center;
+      font-size:clamp(1.55rem, 2.2vw, 2rem);
+    }
+
+    .section-sub{
+      text-align:center;
+      color:var(--muted);
+      max-width:880px;
+      margin:-6px auto 0;
+    }
+
+    .glass-card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius2);
+      box-shadow:var(--shadowSoft);
+      backdrop-filter:blur(14px);
+    }
+
+    .intro-strip{
+      margin-top:-34px;
+      position:relative;
+      z-index:3;
+    }
+
+    .mini-card{
+      height:100%;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:18px;
+      box-shadow:var(--shadowSoft);
+    }
+
+    .mini-card h4{
+      margin:0 0 8px;
+      font-size:1.03rem;
+      font-weight:750;
+    }
+
+    .mini-card p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.65;
+    }
+
+    .route-card, .mode-card, .package-card, .note-card{
+      height:100%;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:22px;
+      overflow:hidden;
+      box-shadow:var(--shadowSoft);
+      transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+
+    .route-card:hover, .mode-card:hover, .package-card:hover{
+      transform:translateY(-5px);
+      border-color:rgba(217,178,95,.28);
+      box-shadow:0 26px 70px rgba(0,0,0,.45);
+    }
+
+    .route-body, .mode-body, .package-body, .note-body{
+      padding:20px;
+    }
+
+    .card-badge{
+      display:inline-block;
+      padding:7px 11px;
+      border-radius:999px;
+      background:rgba(217,178,95,.14);
+      color:var(--gold2);
+      border:1px solid rgba(217,178,95,.16);
+      font-size:.82rem;
+      font-weight:700;
+      margin-bottom:12px;
+    }
+
+    .route-title, .mode-title, .package-title, .note-title{
+      margin:0 0 10px;
+      font-weight:800;
+      font-size:1.15rem;
+    }
+
+    .route-text, .mode-text, .package-text, .note-text{
+      color:var(--muted);
+      line-height:1.7;
+      margin-bottom:14px;
+    }
+
+    .feature-list{
+      margin:0;
+      padding-left:18px;
+      color:rgba(234,239,247,.88);
+      line-height:1.8;
+    }
+
+    .feature-list li{ margin:4px 0; }
+
+    .compare-wrap{
+      padding:20px;
+      overflow-x:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      min-width:780px;
+    }
+
+    th, td{
+      padding:14px 14px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      vertical-align:top;
+      text-align:left;
+    }
+
+    th{
+      color:var(--gold2);
+      font-size:.95rem;
+      font-weight:750;
+      background:rgba(255,255,255,.04);
+    }
+
+    td{
+      color:rgba(234,239,247,.84);
+      line-height:1.65;
+    }
+
+    .planner-box{
+      padding:22px;
+    }
+
+    .planner-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:14px;
+      margin-top:12px;
+    }
+
+    .planner-grid .full{ grid-column:1/-1; }
+
+    label{
+      display:block;
+      margin-bottom:6px;
+      font-weight:650;
+      color:rgba(234,239,247,.94);
+    }
+
+    input, select, textarea{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      background:rgba(0,0,0,.28);
+      border:1px solid rgba(255,255,255,.14);
+      color:var(--text);
+      outline:none;
+      font-weight:450;
+    }
+
+    select option{ color:#111; }
+
+    .planner-note{
+      margin-top:12px;
+      color:var(--muted);
+      line-height:1.65;
+      font-size:.96rem;
+    }
+
+    .timeline{
+      position:relative;
+      padding-left:24px;
+      margin:0;
+    }
+
+    .timeline::before{
+      content:"";
+      position:absolute;
+      left:7px;
+      top:6px;
+      bottom:6px;
+      width:2px;
+      background:rgba(217,178,95,.34);
+    }
+
+    .timeline-item{
+      position:relative;
+      margin-bottom:18px;
+      list-style:none;
+    }
+
+    .timeline-item::before{
+      content:"";
+      position:absolute;
+      left:-20px;
+      top:8px;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background:var(--gold2);
+      box-shadow:0 0 0 4px rgba(217,178,95,.14);
+    }
+
+    .timeline-item h5{
+      margin:0 0 6px;
+      font-size:1rem;
+      font-weight:750;
+    }
+
+    .timeline-item p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.7;
+    }
+
+    .cta-panel{
+      margin-top:18px;
+      background:
+        linear-gradient(135deg, rgba(217,178,95,.14), rgba(240,208,138,.08)),
+        rgba(255,255,255,.05);
+      border:1px solid rgba(217,178,95,.18);
+      border-radius:24px;
+      padding:24px;
+      box-shadow:var(--shadowSoft);
+    }
+
+    .cta-panel h3{
+      margin:0 0 8px;
+      font-size:1.35rem;
+      font-weight:800;
+    }
+
+    .cta-panel p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.7;
+    }
+
+    .cta-actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      align-items:center;
+      margin-top:18px;
+    }
+
+    footer{
+      margin-top:60px;
+      padding:28px 0;
+      border-top:1px solid rgba(255,255,255,.08);
+      background:rgba(0,0,0,.20);
+      color:rgba(234,239,247,.70);
+    }
+
+    footer a{
+      color:rgba(240,208,138,.88);
+      text-decoration:none;
+    }
+
+    footer a:hover{ text-decoration:underline; }
+
+    .float-wrap{
+      position:fixed;
+      right:18px;
+      bottom:18px;
+      z-index:999;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:flex-end;
+    }
+
+    .float-btn{
+      border-radius:999px;
+      padding:10px 14px;
+      font-weight:700;
+      background:linear-gradient(135deg, var(--gold), var(--gold2));
+      color:#0b0f18;
+      text-decoration:none;
+      box-shadow:0 20px 45px rgba(217,178,95,.18);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .float-icon{
+      height:44px;
+      width:44px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg, var(--gold), var(--gold2));
+      box-shadow:0 16px 28px rgba(0,0,0,.45);
+      text-decoration:none;
+      color:#0b0f18;
+      font-weight:800;
+      font-size:1.2rem;
+    }
+
+    @media (max-width: 991.98px){
+      .hero{ padding:82px 0 72px; }
+      .planner-grid{ grid-template-columns:repeat(2,1fr); }
+      .intro-strip{ margin-top:-18px; }
+    }
+
+    @media (max-width: 576px){
+      .hero-title{ font-size:2rem; }
+      .hero-sub{ font-size:.98rem; }
+      .planner-grid{ grid-template-columns:1fr; }
+      .cta-actions{ justify-content:flex-start; }
+    }
+  </style>
+
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/hke-polish.css">
+<script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+<script src="scripts/hke-dynamic-content.js"></script>
+</head>
+<body data-hke-tour-page="leh-ladakh" data-hke-image-section="leh-ladakh">
+
+  <div class="nav-wrap">
+    <nav class="navbar navbar-expand-lg">
+      <div class="container">
+        <a class="brand" href="index.html" aria-label="Home">
+          <img src="media/logo.png" alt="Himalayan Kerala Expeditions" width="550" height="550" decoding="async" />
+          <div>
+            <p class="t1">Himalayan Kerala Expeditions</p>
+            <p class="t2">We Plan. We Care.</p>
+          </div>
+        </a>
+
+        <button class="navbar-toggler text-white" type="button" data-bs-toggle="collapse" data-bs-target="#navMain" aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse justify-content-end" id="navMain">
+          <ul class="navbar-nav align-items-lg-center gap-lg-2 me-lg-3 mt-3 mt-lg-0">
+            <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="ai-planner.html" data-hke-requires-login="true">AI Planner</a></li>
+            <li class="nav-item"><a class="nav-link" href="leh-ladakh.html">Leh Ladakh</a></li>
+            <li class="nav-item"><a class="nav-link" href="pilgrimage.html" data-hke-requires-login="true">Pilgrimage</a></li>
+            <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
+            <li class="nav-item"><a class="nav-link" href="my-orders.html" data-hke-requires-login="true">My Booking</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <header class="hero">
+    <div class="container">
+      <div class="hero-pill">🏔 Premium road journeys • Route support • Flexible travel modes</div>
+
+      <h1 class="hero-title">
+        Leh Ladakh Circuit Journeys from Srinagar and Manali
+      </h1>
+
+      <p class="hero-sub">
+        Choose a premium Leh Ladakh road journey with direct circuit options from Srinagar or Manali.
+        Travel with HKE transport, bring your own car, ride your own bike, or choose a bike rental setup
+        with coordinated stays, route planning, support and realistic road pacing.
+      </p>
+
+      <div class="hero-actions">
+        <a href="#quick-plan" class="btn-lux btn-lux-primary" data-hke-requires-login="true" data-hke-return-url="leh-ladakh.html#quick-plan">Plan This Circuit</a>
+        <a href="https://wa.me/919797294747" target="_blank" rel="noopener" class="btn-lux btn-lux-ghost">WhatsApp Team</a>
+        <a href="ai-planner.html" class="btn-lux btn-lux-ghost" data-hke-requires-login="true">Open AI Planner</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="intro-strip">
+    <div class="container">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="mini-card">
+            <h4>Route-first planning</h4>
+            <p>We separate Srinagar and Manali circuits clearly so your trip logic, acclimatization, and drive flow stay practical.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="mini-card">
+            <h4>Flexible travel mode</h4>
+            <p>Suitable for HKE cabs, self-drive cars, own bikes, and bike rental journeys with support planning.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="mini-card">
+            <h4>Premium support</h4>
+            <p>We help with route pacing, stay coordination, local guidance, permits, and pre-travel briefing.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-3">
+    <div class="container">
+      <h2 class="section-title">Choose your Leh circuit route</h2>
+      <p class="section-sub">
+        Pick the route that matches your entry point, road preference, weather window, and travel style.
+      </p>
+
+      <div class="row g-4 mt-2">
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Classic Entry</div>
+              <h3 class="route-title">Srinagar → Leh</h3>
+              <p class="route-text">
+                A smoother entry into Ladakh with progressive altitude gain, beautiful valley transitions, and a better acclimatization experience for many travellers.
+              </p>
+              <ul class="feature-list">
+                <li>Ideal for comfortable entry into Ladakh</li>
+                <li>Common flow: Srinagar → Sonamarg → Kargil → Leh</li>
+                <li>Better for families, mixed-age groups, and relaxed pacing</li>
+                <li>Excellent when you want to continue later toward Nubra and Pangong</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Adventure Entry</div>
+              <h3 class="route-title">Manali → Leh</h3>
+              <p class="route-text">
+                A more adventurous and raw Himalayan entry with dramatic high-altitude landscapes, longer driving stretches, and stronger expedition character.
+              </p>
+              <ul class="feature-list">
+                <li>Ideal for adventure-driven road travellers</li>
+                <li>Common flow: Manali → Jispa / Sarchu → Leh</li>
+                <li>Best for expedition feel, road-trip lovers, and bike groups</li>
+                <li>Requires better readiness for tougher road sections</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Popular Full Circuit</div>
+              <h3 class="route-title">Srinagar → Leh → Manali</h3>
+              <p class="route-text">
+                Enter through Srinagar for better acclimatization, explore Ladakh properly, then exit through Manali for a complete and scenic circuit experience.
+              </p>
+              <ul class="feature-list">
+                <li>Most balanced premium circuit</li>
+                <li>Combines comfort + adventure in one journey</li>
+                <li>Perfect for travellers wanting both sides of Ladakh</li>
+                <li>Excellent for premium package presentation and sales</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Reverse Expedition</div>
+              <h3 class="route-title">Manali → Leh → Srinagar</h3>
+              <p class="route-text">
+                Start with the raw adventure side and exit from Srinagar. Good for travellers who want an energetic opening and a softer finish.
+              </p>
+              <ul class="feature-list">
+                <li>Best for strong road-trip mindset</li>
+                <li>Adventure-first flow</li>
+                <li>Great for photography and riding groups</li>
+                <li>Works well for specific flight or travel logistics</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Extended Scenic Route</div>
+              <h3 class="route-title">Manali → Leh → Pangong → Srinagar</h3>
+              <p class="route-text">
+                A strong premium circuit for travellers who want to enter from Manali, explore Leh and Pangong,
+                then exit from Srinagar for a more complete Ladakh road experience.
+              </p>
+              <ul class="feature-list">
+                <li>Adventure entry from Manali side</li>
+                <li>Includes Pangong extension</li>
+                <li>Exit through Srinagar for a balanced finish</li>
+                <li>Excellent for premium road-trip customers</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="route-card">
+            <div class="route-body">
+              <div class="card-badge">Extended Scenic Route</div>
+              <h3 class="route-title">Srinagar → Leh → Pangong → Manali</h3>
+              <p class="route-text">
+                A very practical and attractive premium circuit where travellers enter smoothly from Srinagar,
+                cover Leh and Pangong, then exit through Manali for a full Himalayan road journey.
+              </p>
+              <ul class="feature-list">
+                <li>Smoother entry from Srinagar side</li>
+                <li>Includes Pangong extension</li>
+                <li>Adventure-style exit via Manali</li>
+                <li>One of the best premium Leh circuit formats</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Choose your travel mode</h2>
+      <p class="section-sub">
+        We support multiple travel styles so the circuit can match your comfort, budget, and adventure level.
+      </p>
+
+      <div class="row g-4 mt-2">
+        <div class="col-md-6 col-lg-3">
+          <div class="mode-card">
+            <div class="mode-body">
+              <div class="card-badge">Comfort</div>
+              <h3 class="mode-title">HKE Vehicle</h3>
+              <p class="mode-text">
+                Best for customers who want a convenient and comfortable handled journey with coordinated transport and local support.
+              </p>
+              <ul class="feature-list">
+                <li>Driver-supported route</li>
+                <li>Comfort focused</li>
+                <li>Good for family or couple travel</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+          <div class="mode-card">
+            <div class="mode-body">
+              <div class="card-badge">Self Drive</div>
+              <h3 class="mode-title">Own Car</h3>
+              <p class="mode-text">
+                Perfect for travellers bringing their own vehicle and needing stays, route pacing, support planning, and coordination.
+              </p>
+              <ul class="feature-list">
+                <li>Stay + route planning</li>
+                <li>Flexible pacing</li>
+                <li>Useful for family road trips</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+          <div class="mode-card">
+            <div class="mode-body">
+              <div class="card-badge">Ride Ready</div>
+              <h3 class="mode-title">Bike Rental</h3>
+              <p class="mode-text">
+                Best for customers who want a Ladakh riding experience without bringing their own motorcycle.
+              </p>
+              <ul class="feature-list">
+                <li>Expedition feel</li>
+                <li>Rider-focused support</li>
+                <li>Strong adventure appeal</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+          <div class="mode-card">
+            <div class="mode-body">
+              <div class="card-badge">Personal Ride</div>
+              <h3 class="mode-title">Own Bike</h3>
+              <p class="mode-text">
+                Suitable for serious riding groups who want route planning, stays, and support while riding their own machines.
+              </p>
+              <ul class="feature-list">
+                <li>For experienced riders</li>
+                <li>Group-ready structure</li>
+                <li>High flexibility</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Which route fits which traveller?</h2>
+
+      <div class="glass-card compare-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Route</th>
+              <th>Best for</th>
+              <th>Travel feel</th>
+              <th>Practical note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Srinagar → Leh</td>
+              <td>Families, couples, mixed-age travellers</td>
+              <td>Comfortable entry, scenic valley progression</td>
+              <td>Often easier as a starting side for smoother acclimatization</td>
+            </tr>
+            <tr>
+              <td>Manali → Leh</td>
+              <td>Adventure travellers, road expedition lovers</td>
+              <td>Raw, bold, high-altitude road-trip energy</td>
+              <td>Needs stronger road readiness and trip pacing</td>
+            </tr>
+            <tr>
+              <td>Srinagar → Leh → Manali</td>
+              <td>Premium full-circuit customers</td>
+              <td>Balanced and complete Ladakh experience</td>
+              <td>Strongest sales product for a full road circuit</td>
+            </tr>
+            <tr>
+              <td>Manali → Leh → Srinagar</td>
+              <td>Riders and high-adventure groups</td>
+              <td>Adventure first, softer finish</td>
+              <td>Good when return travel logistics favor Srinagar side</td>
+            </tr>
+            <tr>
+              <td>Manali → Leh → Pangong → Srinagar</td>
+              <td>Premium explorers and road-trip couples/groups</td>
+              <td>Adventure entry with premium scenic extension</td>
+              <td>Very attractive for clients who want Pangong included in a one-way circuit</td>
+            </tr>
+            <tr>
+              <td>Srinagar → Leh → Pangong → Manali</td>
+              <td>Balanced premium customers wanting full experience</td>
+              <td>Comfortable entry with adventurous exit</td>
+              <td>One of the most saleable premium Ladakh route formats</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="quick-plan" class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Quick Leh circuit enquiry</h2>
+      <p class="section-sub">
+        Customers can directly choose route and travel mode here, then continue to AI planner or WhatsApp.
+      </p>
+
+      <div class="glass-card planner-box">
+        <form id="lehForm">
+          <div class="planner-grid">
+            <div>
+              <label for="name">Name *</label>
+              <input id="name" type="text" placeholder="Your full name" required />
+            </div>
+
+            <div>
+              <label for="phone">Mobile *</label>
+              <input id="phone" type="tel" placeholder="10-digit number" maxlength="10" required />
+            </div>
+
+            <div>
+              <label for="email">Email</label>
+              <input id="email" type="email" placeholder="you@example.com" />
+            </div>
+
+            <div>
+              <label for="route">Leh Circuit Route *</label>
+              <select id="route" required>
+                <option value="">— Select route —</option>
+                <option value="Srinagar to Leh">Srinagar → Leh</option>
+                <option value="Manali to Leh">Manali → Leh</option>
+                <option value="Srinagar to Leh to Manali">Srinagar → Leh → Manali</option>
+                <option value="Manali to Leh to Srinagar">Manali → Leh → Srinagar</option>
+                <option value="Manali to Leh to Pangong to Srinagar">Manali → Leh → Pangong → Srinagar</option>
+                <option value="Srinagar to Leh to Pangong to Manali">Srinagar → Leh → Pangong → Manali</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="travelMode">Travel Mode *</label>
+              <select id="travelMode" required>
+                <option value="">— Select mode —</option>
+                <option value="HKE Vehicle">HKE Vehicle</option>
+                <option value="Own Car / Self Drive">Own Car / Self Drive</option>
+                <option value="Bike Rental">Bike Rental</option>
+                <option value="Own Bike">Own Bike</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="days">Days *</label>
+              <input id="days" type="number" min="4" value="7" required />
+            </div>
+
+            <div>
+              <label for="travellers">Travellers</label>
+              <input id="travellers" type="number" min="1" value="2" />
+            </div>
+
+            <div>
+              <label for="startMonth">Preferred Month</label>
+              <select id="startMonth">
+                <option value="">Flexible</option>
+                <option>May</option>
+                <option>June</option>
+                <option>July</option>
+                <option>August</option>
+                <option>September</option>
+                <option>October</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="budget">Budget Level</label>
+              <select id="budget">
+                <option>Budget</option>
+                <option selected>Standard</option>
+                <option>Premium</option>
+                <option>Luxury</option>
+              </select>
+            </div>
+
+            <div class="full">
+              <label for="notes">Special Notes</label>
+              <textarea id="notes" rows="3" placeholder="Example: own Innova, 4 riders, want Nubra + Pangong, need premium stays, want slower route pacing..."></textarea>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="button" id="sendWhatsApp" class="btn-lux btn-lux-primary" data-hke-requires-login="true" data-hke-return-url="leh-ladakh.html#quick-plan">Send on WhatsApp</button>
+            <a href="ai-planner.html" class="btn-lux btn-lux-ghost" data-hke-requires-login="true">Open AI Planner</a>
+            <a href="tel:+919797294747" class="btn-lux btn-lux-ghost">Talk to Customer Care</a>
+          </div>
+
+          <div class="planner-note">
+            This quick form is best for direct Leh circuit leads. For a full detailed custom itinerary workflow, use the existing AI Trip Planner.
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Recommended Leh circuit package ideas</h2>
+      <p class="section-sub">
+        You can later connect each of these to a separate booking page or package detail section.
+      </p>
+
+      <div class="row g-4 mt-2">
+        <div class="col-lg-4">
+          <div class="package-card">
+            <div class="package-body">
+              <div class="card-badge">Comfort + Scenic</div>
+              <h3 class="package-title">7 Days Srinagar → Leh</h3>
+              <p class="package-text">
+                A premium entry-side Ladakh journey ideal for couples, families, and travellers who want comfort-first pacing.
+              </p>
+              <ul class="feature-list">
+                <li>Srinagar, Sonamarg, Kargil, Leh</li>
+                <li>Nubra or local Leh extension possible</li>
+                <li>Comfort-driven route rhythm</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="package-card">
+            <div class="package-body">
+              <div class="card-badge">Full Road Circuit</div>
+              <h3 class="package-title">9 Days Srinagar → Leh → Manali</h3>
+              <p class="package-text">
+                One of the strongest premium Ladakh products, ideal for customers wanting a complete overland circuit.
+              </p>
+              <ul class="feature-list">
+                <li>Srinagar side entry</li>
+                <li>Leh, Nubra, Pangong possible</li>
+                <li>Exit via Manali for full experience</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="package-card">
+            <div class="package-body">
+              <div class="card-badge">Rider Focus</div>
+              <h3 class="package-title">8 Days Manali → Leh Bike Circuit</h3>
+              <p class="package-text">
+                Designed for bike-focused clients who want a bold Himalayan ride with route planning and stay coordination.
+              </p>
+              <ul class="feature-list">
+                <li>Expedition-style journey</li>
+                <li>Best for riders and friend groups</li>
+                <li>Can be adapted for own bike or rental</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="package-card">
+            <div class="package-body">
+              <div class="card-badge">Premium Scenic Extension</div>
+              <h3 class="package-title">8–9 Days Manali → Leh → Pangong → Srinagar</h3>
+              <p class="package-text">
+                Great for premium customers who want a stronger road-trip entry from Manali and a more balanced finish through Srinagar after Pangong.
+              </p>
+              <ul class="feature-list">
+                <li>Adventure-first route</li>
+                <li>Pangong extension included</li>
+                <li>Excellent for self-drive or premium cab circuit</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="package-card">
+            <div class="package-body">
+              <div class="card-badge">Balanced Premium Extension</div>
+              <h3 class="package-title">8–9 Days Srinagar → Leh → Pangong → Manali</h3>
+              <p class="package-text">
+                One of the most attractive premium full-road options for customers wanting better acclimatization, Pangong, and a dramatic Manali exit.
+              </p>
+              <ul class="feature-list">
+                <li>Comfortable entry</li>
+                <li>Pangong included</li>
+                <li>Adventure-style full circuit finish</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Important planning notes</h2>
+
+      <div class="row g-4 mt-2">
+        <div class="col-lg-6">
+          <div class="note-card">
+            <div class="note-body">
+              <div class="card-badge">Before Travel</div>
+              <h3 class="note-title">What we usually help coordinate</h3>
+              <ul class="feature-list">
+                <li>Route pacing and suitable circuit selection</li>
+                <li>Stay coordination by comfort level</li>
+                <li>Travel mode planning: cab, own car, or bike</li>
+                <li>Practical day-wise flow for sightseeing and movement</li>
+                <li>Basic pre-travel guidance before departure</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="note-card">
+            <div class="note-body">
+              <div class="card-badge">Good to Remember</div>
+              <h3 class="note-title">Leh circuit travel mindset</h3>
+              <ul class="feature-list">
+                <li>Road and weather conditions can shape day pacing</li>
+                <li>Long-distance mountain travel requires practical planning</li>
+                <li>Vehicle type matters for comfort and luggage flow</li>
+                <li>Bike trips require a stronger expedition mindset</li>
+                <li>A full circuit needs smarter sequencing than a normal tour</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <h2 class="section-title">Simple journey flow</h2>
+
+      <div class="glass-card p-4">
+        <ul class="timeline">
+          <li class="timeline-item">
+            <h5>Select your route</h5>
+            <p>Choose Srinagar side, Manali side, or a full circuit depending on your trip style and travel window.</p>
+          </li>
+          <li class="timeline-item">
+            <h5>Select travel mode</h5>
+            <p>Choose HKE transport, own car, bike rental, or own bike based on comfort and adventure level.</p>
+          </li>
+          <li class="timeline-item">
+            <h5>Send enquiry or open AI planner</h5>
+            <p>For quick lead capture, use WhatsApp. For a more tailored flow, continue into the AI Trip Planner.</p>
+          </li>
+          <li class="timeline-item">
+            <h5>Finalize itinerary and booking</h5>
+            <p>Once your route, stay style, and movement plan are aligned, the final quotation and booking flow can continue smoothly.</p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="pt-2">
+    <div class="container">
+      <div class="cta-panel">
+        <div class="row g-3 align-items-center">
+          <div class="col-lg-7">
+            <h3>Ready to convert Leh Ladakh enquiries faster?</h3>
+            <p>
+              Use this page for direct route-based sales. Let customers choose circuit and travel mode first,
+              then move them to WhatsApp, customer care, or your existing AI planner for a detailed itinerary.
+            </p>
+          </div>
+          <div class="col-lg-5">
+            <div class="cta-actions">
+              <a href="#quick-plan" class="btn-lux btn-lux-primary" data-hke-requires-login="true" data-hke-return-url="leh-ladakh.html#quick-plan">Quick Enquiry</a>
+              <a href="ai-planner.html" class="btn-lux btn-lux-ghost" data-hke-requires-login="true">AI Planner</a>
+              <a href="https://wa.me/919797294747" target="_blank" rel="noopener" class="btn-lux btn-lux-ghost">WhatsApp Team</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container text-center">
+      <div style="font-weight:700;">© 2026 Himalayan Kerala Expeditions</div>
+      <div style="margin-top:6px;">
+        <span style="color:rgba(234,239,247,.72);">Email:</span>
+        <span style="font-weight:600;">himalayankeralaexpeditions@gmail.com</span>
+        <span style="opacity:.5;"> | </span>
+        <span style="color:rgba(234,239,247,.72);">WhatsApp:</span>
+        <span style="font-weight:600;">+91 97972 94747</span>
+      </div>
+      <div style="margin-top:10px; font-size:.95rem;">
+        <a href="terms.html">Terms & Conditions</a>
+        <span style="opacity:.5;"> | </span>
+        <a href="privacy.html">Privacy Policy</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="float-wrap">
+    <a class="float-btn" href="ai-planner.html" data-hke-requires-login="true">Plan with AI</a>
+    <a class="float-icon" href="https://wa.me/919797294747" target="_blank" rel="noopener" title="WhatsApp">W</a>
+    <a class="float-icon" href="tel:+919797294747" title="Call">☎</a>
+  </div>
+
+  <script>
+    (function () {
+      const btn = document.getElementById("sendWhatsApp");
+
+      function clean(v) {
+        return String(v || "").trim();
+      }
+
+      function getValue(id) {
+        const el = document.getElementById(id);
+        return el ? clean(el.value) : "";
+      }
+
+      btn?.addEventListener("click", function () {
+        const name = getValue("name");
+        const phone = getValue("phone");
+        const email = getValue("email");
+        const route = getValue("route");
+        const travelMode = getValue("travelMode");
+        const days = getValue("days");
+        const travellers = getValue("travellers");
+        const startMonth = getValue("startMonth");
+        const budget = getValue("budget");
+        const notes = getValue("notes");
+
+        if (!name || !phone || !route || !travelMode || !days) {
+          alert("Please fill Name, Mobile, Leh Circuit Route, Travel Mode, and Days.");
+          return;
+        }
+
+        const msg =
+`Hello Himalayan Kerala Expeditions,
+
+I want a Leh Ladakh circuit plan.
+
+Name: ${name}
+Mobile: ${phone}
+Email: ${email || "Not provided"}
+
+Selected Route: ${route}
+Travel Mode: ${travelMode}
+Trip Duration: ${days} Days
+Travellers: ${travellers || "Not specified"}
+Preferred Month: ${startMonth || "Flexible"}
+Budget Level: ${budget || "Standard"}
+
+Special Notes:
+${notes || "None"}
+
+Please share the best itinerary, stay plan, and quotation for this route.`;
+
+        const url = "https://wa.me/919797294747?text=" + encodeURIComponent(msg);
+        window.open(url, "_blank");
+      });
+    })();
+  </script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

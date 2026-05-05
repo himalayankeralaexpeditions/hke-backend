@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HKE - Booking & Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="media/favicon.ico" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --gold:#D9B25F;
+      --gold2:#F0D08A;
+      --text:#EAEFF7;
+      --muted:rgba(234,239,247,.75);
+      --panel:rgba(255,255,255,.06);
+      --border:rgba(255,255,255,.12);
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+      --danger:#ffb2b2;
+      --ok:#baf7c8;
+    }
+
+    body{
+      font-family:"Inter",sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      margin:0;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.80), rgba(0,0,0,.42)),
+        url("media/hero-banner.jpg") center/cover no-repeat fixed;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(900px 520px at 18% 18%, rgba(217,178,95,.18), transparent 60%),
+        radial-gradient(900px 520px at 85% 20%, rgba(240,208,138,.10), transparent 58%),
+        linear-gradient(to bottom, rgba(0,0,0,.36), rgba(0,0,0,.72));
+      z-index:0;
+    }
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:10;
+      padding:14px 0;
+      backdrop-filter: blur(14px);
+      background: rgba(10,12,16,.60);
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand img{
+      height:46px;
+      background:#fff;
+      padding:6px;
+      border-radius:14px;
+      box-shadow:0 0 14px rgba(217,178,95,.35);
+    }
+    .brand .t1{font-weight:700;line-height:1.1;margin:0}
+    .brand .t2{font-weight:500;font-size:.95rem;margin:0;color:rgba(240,208,138,.85)}
+
+    .page-wrap{
+      position:relative;
+      z-index:2;
+      padding:24px 12px 50px;
+    }
+
+    .container-box{
+      max-width:1200px;
+      margin:0 auto;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:24px;
+      backdrop-filter:blur(14px);
+      box-shadow:var(--shadow);
+      padding:22px;
+    }
+
+    .hero-head{
+      display:flex;
+      justify-content:space-between;
+      gap:18px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+    }
+
+    .title{
+      font-weight:800;
+      font-size:2rem;
+      margin:0;
+      letter-spacing:-.3px;
+    }
+
+    .sub{
+      color:var(--muted);
+      margin-top:6px;
+    }
+
+    .action-bar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:18px;
+    }
+
+    .btn-gold,
+    .btn-ghost,
+    .btn-danger-soft{
+      text-decoration:none;
+      border:none;
+      border-radius:999px;
+      padding:11px 18px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .btn-gold{
+      background:linear-gradient(135deg,var(--gold),var(--gold2));
+      color:#0b0f18;
+    }
+
+    .btn-ghost{
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.15);
+    }
+
+    .btn-danger-soft{
+      background:rgba(255,120,120,.12);
+      color:#ffd8d8;
+      border:1px solid rgba(255,120,120,.20);
+    }
+
+    .section{
+      margin-top:18px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:20px;
+      padding:18px;
+    }
+
+    .section h3{
+      margin:0 0 14px;
+      font-size:1.1rem;
+      font-weight:800;
+      color:rgba(240,208,138,.95);
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:16px;
+    }
+
+    .grid-4{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+    }
+
+    .detail-card{
+      background:rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:16px;
+      padding:14px;
+    }
+
+    .detail-card .label{
+      color:var(--muted);
+      font-size:.88rem;
+      margin-bottom:6px;
+    }
+
+    .detail-card .value{
+      font-weight:700;
+      line-height:1.5;
+      word-break:break-word;
+    }
+
+    .price-box{
+      background:linear-gradient(180deg, rgba(217,178,95,.12), rgba(255,255,255,.04));
+      border:1px solid rgba(217,178,95,.24);
+      border-radius:18px;
+      padding:16px;
+    }
+
+    .price-row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 0;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+
+    .price-row:last-child{
+      border-bottom:none;
+    }
+
+    .price-row.total{
+      font-size:1.08rem;
+      font-weight:800;
+      color:rgba(240,208,138,.95);
+    }
+
+    .badge-line{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:10px;
+    }
+
+    .mini-badge{
+      background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:999px;
+      padding:7px 11px;
+      font-size:.9rem;
+      color:var(--text);
+    }
+
+    .pay-box{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      padding:16px;
+      margin-top:14px;
+    }
+
+    .highlight{
+      background:rgba(217,178,95,.08);
+      border:1px solid rgba(217,178,95,.20);
+      border-radius:16px;
+      padding:14px;
+      line-height:1.8;
+    }
+
+    .list-clean{
+      margin:0;
+      padding-left:18px;
+      line-height:1.9;
+      color:rgba(234,239,247,.88);
+    }
+
+    .warning{
+      color:var(--danger);
+      font-weight:600;
+    }
+
+    .success{
+      color:var(--ok);
+      font-weight:600;
+    }
+
+    .payment-options{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
+      margin-top:16px;
+    }
+
+    .payment-card{
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      padding:16px;
+    }
+
+    .payment-card h4{
+      margin:0 0 8px;
+      font-size:1rem;
+      font-weight:800;
+    }
+
+    .payment-card .amt{
+      font-size:1.35rem;
+      font-weight:800;
+      color:rgba(240,208,138,.95);
+      margin-bottom:8px;
+    }
+
+    .payment-card p{
+      color:var(--muted);
+      line-height:1.7;
+      min-height:70px;
+      margin-bottom:12px;
+    }
+
+    .custom-amount-box{
+      margin-top:12px;
+    }
+
+    .custom-amount-box input{
+      width:100%;
+      padding:12px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.25);
+      color:var(--text);
+      outline:none;
+      margin-bottom:10px;
+    }
+
+    .status-box{
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      display:none;
+      line-height:1.7;
+    }
+
+    .empty{
+      text-align:center;
+      padding:50px 20px;
+      color:var(--muted);
+      font-size:1.05rem;
+    }
+
+    @media (max-width: 992px){
+      .grid-2{grid-template-columns:1fr;}
+      .grid-4{grid-template-columns:repeat(2,1fr);}
+      .payment-options{grid-template-columns:1fr;}
+    }
+
+    @media (max-width: 576px){
+      .grid-4{grid-template-columns:1fr;}
+      .title{font-size:1.5rem;}
+    }
+  </style>
+
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/hke-polish.css">
+<script src="scripts/hke-auth-gate.js?v=20260504_otpfix"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="container d-flex justify-content-between align-items-center">
+      <div class="brand">
+        <img src="media/logo.png" alt="HKE" width="550" height="550" decoding="async" />
+        <div>
+          <p class="t1">Himalayan Kerala Expeditions</p>
+          <p class="t2">We Plan. We Care.</p>
+        </div>
+      </div>
+      <a href="itinerary-result.html" class="btn-ghost">← Back to Itinerary</a>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="container-box">
+      <div id="emptyState" class="empty" style="display:none;">
+        No booking data found. Please generate itinerary first.
+        <div style="margin-top:16px;">
+          <a href="ai-planner.html" class="btn-gold">Go to AI Planner</a>
+        </div>
+      </div>
+
+      <div id="contentWrap" style="display:none;">
+        <div class="hero-head">
+          <div>
+            <h1 id="bookingTitle" class="title">Booking & Payment Summary</h1>
+            <div id="bookingSub" class="sub">Trip booking page with Razorpay payment</div>
+          </div>
+        </div>
+
+        <div class="action-bar">
+          <a id="callBtn" href="#" class="btn-ghost">📞 Talk to Customer Care</a>
+          <a id="waBtn" href="#" target="_blank" class="btn-ghost">💬 WhatsApp</a>
+          <a href="itinerary-result.html" class="btn-ghost">✏️ Back to Itinerary</a>
+        </div>
+
+        <div class="grid-2 section">
+          <div>
+            <h3>Trip & Guest Details</h3>
+            <div id="summaryGrid" class="grid-4"></div>
+          </div>
+
+          <div>
+            <h3>Estimated Package Price</h3>
+            <div class="price-box">
+              <div class="price-row">
+                <span>Base package amount</span>
+                <strong id="baseFare">₹0</strong>
+              </div>
+              <div class="price-row">
+                <span>Season adjustment</span>
+                <strong id="seasonAdj">₹0</strong>
+              </div>
+              <div class="price-row">
+                <span>Competitive HKE discount</span>
+                <strong id="discountVal">- ₹0</strong>
+              </div>
+              <div class="price-row total">
+                <span>Estimated total package</span>
+                <strong id="finalFare">₹0</strong>
+              </div>
+              <div class="price-row">
+                <span>Booking advance now (20%)</span>
+                <strong id="advanceFare">₹0</strong>
+              </div>
+              <div class="price-row">
+                <span>Balance payment</span>
+                <strong id="balanceFare">₹0</strong>
+              </div>
+            </div>
+
+            <div class="badge-line">
+              <span class="mini-badge" id="seasonBadge">Season: -</span>
+              <span class="mini-badge" id="daysLeftBadge">Days left: -</span>
+              <span class="mini-badge">20% advance required</span>
+            </div>
+
+            <div class="pay-box">
+              <div class="highlight">
+                <div><strong>Booking Rule:</strong> Minimum <strong>20% advance</strong> is required for booking confirmation.</div>
+                <div class="mt-2"><strong>Full payment must be completed at least 10 days before trip start date.</strong></div>
+              </div>
+
+              <div class="mt-3">
+                <div class="success" id="paymentStatusLine">Payment timeline is acceptable for this trip.</div>
+                <div class="warning mt-2" id="lateWarningLine" style="display:none;">
+                  This trip starts in less than 10 days. Full payment should be taken immediately.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Choose Payment Option</h3>
+          <div class="payment-options">
+            <div class="payment-card">
+              <h4>Pay 20% Advance</h4>
+              <div class="amt" id="advanceAmtBig">₹0</div>
+              <p>Confirm your booking slot now with the minimum required advance amount.</p>
+              <button id="payAdvanceBtn" class="btn-gold" type="button">Pay Advance</button>
+            </div>
+
+            <div class="payment-card">
+              <h4>Pay Full Amount</h4>
+              <div class="amt" id="fullAmtBig">₹0</div>
+              <p>Complete full payment now and lock the current booking estimate immediately.</p>
+              <button id="payFullBtn" class="btn-ghost" type="button">Pay Full</button>
+            </div>
+
+            <div class="payment-card">
+              <h4>Pay Custom Amount</h4>
+              <div class="amt">Choose Your Amount</div>
+              <p>Use this only when our team has guided you to pay a specific custom amount.</p>
+              <div class="custom-amount-box">
+                <input id="customAmountInput" type="number" min="1" step="1" placeholder="Enter amount in INR" />
+                <button id="payCustomBtn" class="btn-danger-soft" type="button">Pay Custom Amount</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="statusBox" class="status-box"></div>
+        </div>
+
+        <div class="section">
+          <h3>Payment Terms</h3>
+          <ul class="list-clean">
+            <li>Booking is confirmed only after successful payment receipt.</li>
+            <li>Minimum <strong>20% advance</strong> must be collected at the time of booking.</li>
+            <li>The remaining balance must be paid <strong>at least 10 days before trip start date</strong>.</li>
+            <li>For trips starting in less than 10 days, full payment may be required immediately.</li>
+            <li>Live hotel, vehicle and seasonal rates remain subject to availability until payment confirmation.</li>
+          </ul>
+        </div>
+
+        <div class="section">
+          <h3>Cancellation & Reschedule Policy</h3>
+          <ul class="list-clean">
+            <li>Advance payment is generally non-refundable after hotel / transport blocking begins.</li>
+            <li>Cancellation more than 15 days before travel may allow rescheduling support subject to supplier rules.</li>
+            <li>Cancellation between 10 to 15 days before travel may involve partial retention charges.</li>
+            <li>Cancellation within 10 days of travel may attract high cancellation charges.</li>
+            <li>No-show or same-day cancellation may lead to 100% retention based on confirmed services.</li>
+            <li>Rescheduling depends on room availability, season difference and transport rebooking conditions.</li>
+          </ul>
+        </div>
+
+        <div class="section">
+          <h3>Important Booking Conditions</h3>
+          <ul class="list-clean">
+            <li>Displayed amount is an estimated competitive package price based on current trip details and season demand.</li>
+            <li>Actual final price may vary slightly based on final hotel, permits, vehicle availability and live market conditions.</li>
+            <li>Entry fees, activities, airfare/train fare and personal expenses are excluded unless specifically mentioned.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const COMPANY_PHONE = "919797294747";
+      const API_BASE = "https://hke-backend.onrender.com";
+
+      const $ = (id) => document.getElementById(id);
+
+      let bookingData = null;
+      let pricing = null;
+      let razorpayKeyId = "";
+
+      function formatINR(value) {
+        return `₹${Math.round(value || 0).toLocaleString("en-IN")}`;
+      }
+
+      function escapeHTML(str = "") {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function makeCard(label, value) {
+        return `
+          <div class="detail-card">
+            <div class="label">${escapeHTML(label)}</div>
+            <div class="value">${escapeHTML(value || "-")}</div>
+          </div>
+        `;
+      }
+
+      function showStatus(message, type = "normal") {
+        const box = $("statusBox");
+        box.style.display = "block";
+        box.textContent = message;
+
+        if (type === "success") {
+          box.style.borderColor = "rgba(120,255,160,.25)";
+          box.style.background = "rgba(120,255,160,.08)";
+          box.style.color = "#cbffd8";
+        } else if (type === "error") {
+          box.style.borderColor = "rgba(255,120,120,.25)";
+          box.style.background = "rgba(255,120,120,.08)";
+          box.style.color = "#ffd7d7";
+        } else {
+          box.style.borderColor = "rgba(255,255,255,.10)";
+          box.style.background = "rgba(255,255,255,.04)";
+          box.style.color = "#EAEFF7";
+        }
+      }
+
+      function getDaysBetween(startDate) {
+        if (!startDate) return null;
+        const today = new Date();
+        const start = new Date(startDate + "T00:00:00");
+        const diff = start.getTime() - today.getTime();
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+      }
+
+      function addDaysToDate(dateStr, daysToAdd) {
+        if (!dateStr) return "";
+        const d = new Date(dateStr + "T00:00:00");
+        d.setDate(d.getDate() + daysToAdd);
+        return d.toISOString().slice(0, 10);
+      }
+
+      function getFullPaymentDeadline(startDate) {
+        if (!startDate) return "";
+        return addDaysToDate(startDate, -10);
+      }
+
+      function getSeasonInfo(destination, startDate) {
+        const month = startDate ? new Date(startDate + "T00:00:00").getMonth() + 1 : 1;
+
+        let seasonName = "Regular Season";
+        let multiplier = 1.00;
+
+        const hillDestinations = ["Himachal Pradesh", "Kashmir", "Ladakh", "Uttarakhand"];
+        const beachDestinations = ["Goa", "Kerala"];
+        const desertDestinations = ["Rajasthan"];
+        const northEast = ["Northeast India"];
+
+        if (hillDestinations.includes(destination)) {
+          if ([4,5,6].includes(month)) {
+            seasonName = "High Season";
+            multiplier = 1.18;
+          } else if ([10,11,12].includes(month)) {
+            seasonName = "Peak Season";
+            multiplier = 1.25;
+          }
+        } else if (beachDestinations.includes(destination)) {
+          if ([11,12,1].includes(month)) {
+            seasonName = "Peak Season";
+            multiplier = 1.22;
+          } else if ([2,3,10].includes(month)) {
+            seasonName = "High Season";
+            multiplier = 1.12;
+          } else {
+            seasonName = "Value Season";
+            multiplier = 0.95;
+          }
+        } else if (desertDestinations.includes(destination)) {
+          if ([11,12,1,2].includes(month)) {
+            seasonName = "Peak Season";
+            multiplier = 1.20;
+          } else {
+            seasonName = "Regular Season";
+            multiplier = 0.96;
+          }
+        } else if (northEast.includes(destination)) {
+          if ([3,4,5,10,11].includes(month)) {
+            seasonName = "High Season";
+            multiplier = 1.15;
+          }
+        }
+
+        return { seasonName, multiplier };
+      }
+
+      function estimatePackagePrice(customer) {
+        const days = Number(customer.days || 5);
+        const travellers = Number(customer.travellers || 2);
+        const rooms = Number(customer.rooms || 1);
+        const hotelClass = customer.hotelClass || "Standard";
+        const vehicle = customer.vehicle || "SUV";
+        const guide = customer.guide || "Without Guide";
+        const needFood = !!customer.needFood;
+        const destination = customer.destination || "";
+        const startDate = customer.startDate || "";
+
+        let perPersonPerDay = 3200;
+        if (hotelClass === "Budget") perPersonPerDay = 2600;
+        if (hotelClass === "Standard") perPersonPerDay = 3200;
+        if (hotelClass === "Premium") perPersonPerDay = 4600;
+        if (hotelClass === "No Hotel") perPersonPerDay = 1800;
+
+        let baseFare = perPersonPerDay * travellers * days;
+        baseFare += rooms * days * 1200;
+
+        if (vehicle === "Sedan") baseFare += days * 2200;
+        else if (vehicle === "SUV") baseFare += days * 3200;
+        else if (vehicle === "Tempo Traveller") baseFare += days * 5200;
+
+        if (guide === "With Guide") baseFare += days * 1500;
+        if (needFood) baseFare += travellers * days * 650;
+
+        if (destination === "Ladakh") baseFare += travellers * days * 1200;
+        if (destination === "Kashmir") baseFare += travellers * days * 700;
+        if (destination === "Northeast India") baseFare += travellers * days * 850;
+        if (destination === "Goa") baseFare += travellers * days * 500;
+
+        const season = getSeasonInfo(destination, startDate);
+        const seasonFare = Math.round(baseFare * (season.multiplier - 1));
+
+        let discountRate = 0.06;
+        if (days >= 6) discountRate = 0.08;
+        if (travellers >= 4) discountRate = Math.max(discountRate, 0.09);
+        if (travellers >= 6) discountRate = Math.max(discountRate, 0.11);
+
+        const gross = baseFare + seasonFare;
+        const discountValue = Math.round(gross * discountRate);
+        const finalFare = Math.max(0, gross - discountValue);
+        const advanceFare = Math.round(finalFare * 0.20);
+        const balanceFare = finalFare - advanceFare;
+
+        return {
+          baseFare,
+          seasonFare,
+          discountValue,
+          finalFare,
+          advanceFare,
+          balanceFare,
+          seasonName: season.seasonName
+        };
+      }
+
+      async function fetchPaymentConfig() {
+        const res = await fetch(`${API_BASE}/api/payment/config`);
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          throw new Error("Unable to load payment config");
+        }
+
+        if (!data.razorpay_enabled || !data.razorpay_key_id) {
+          throw new Error("Razorpay is not configured on backend");
+        }
+
+        razorpayKeyId = data.razorpay_key_id;
+      }
+
+      async function createOrder(amount, paymentType) {
+        const customer = bookingData.customer;
+
+        const res = await fetch(`${API_BASE}/api/payment/create-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amount,
+            currency: "INR",
+            receipt: `hke_${paymentType}_${Date.now()}`,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+            trip_name: bookingData.itinerary?.title || "HKE Trip Booking",
+            payment_type: paymentType
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.detail || "Unable to create payment order");
+        }
+
+        return data;
+      }
+
+      async function verifyPayment(payload) {
+        const res = await fetch(`${API_BASE}/api/payment/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.detail || "Payment verification failed");
+        }
+
+        return data;
+      }
+
+      async function savePaymentConfirmation(paymentInfo) {
+        const customer = bookingData.customer || {};
+        const totalFare = pricing.finalFare;
+        const paidAmount = paymentInfo.paidAmount;
+        const remainingAmount = Math.max(0, totalFare - paidAmount);
+        const startDate = customer.startDate || "";
+        const fullPaymentDeadline = getFullPaymentDeadline(startDate);
+        const daysLeft = getDaysBetween(startDate);
+
+        let nextScheduleText = "";
+        if (remainingAmount <= 0) {
+          nextScheduleText = "No balance remaining. Your package is fully paid.";
+        } else if (daysLeft !== null && daysLeft < 10) {
+          nextScheduleText = `Remaining balance of ${formatINR(remainingAmount)} should be paid immediately because trip starts in less than 10 days.`;
+        } else {
+          nextScheduleText = `Remaining balance of ${formatINR(remainingAmount)} must be paid on or before ${fullPaymentDeadline}.`;
+        }
+
+        const confirmationData = {
+          customer: customer,
+          itinerary: bookingData.itinerary || {},
+          pricing: pricing,
+          payment: {
+            paymentType: paymentInfo.paymentType,
+            paidAmount: paidAmount,
+            remainingAmount: remainingAmount,
+            razorpayOrderId: paymentInfo.razorpayOrderId,
+            razorpayPaymentId: paymentInfo.razorpayPaymentId,
+            paidAt: new Date().toISOString(),
+            fullPaymentDeadline: fullPaymentDeadline,
+            nextScheduleText: nextScheduleText
+          }
+        };
+
+        localStorage.setItem("hkePaymentConfirmation", JSON.stringify(confirmationData));
+
+        const res = await fetch(`${API_BASE}/api/payment/save-confirmation`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(confirmationData)
+        });
+
+        const out = await res.json();
+        if (!res.ok || !out?.ok) {
+          throw new Error(out?.detail || "Unable to save payment confirmation");
+        }
+      }
+
+      async function startRazorpayPayment(amount, paymentType) {
+        if (!bookingData || !pricing) return;
+
+        const customer = bookingData.customer || {};
+
+        if (!razorpayKeyId) {
+          showStatus("Razorpay key not loaded from backend.", "error");
+          return;
+        }
+
+        if (!window.Razorpay) {
+          showStatus("Razorpay script not loaded.", "error");
+          return;
+        }
+
+        try {
+          showStatus("Creating Razorpay order...", "normal");
+
+          const order = await createOrder(amount, paymentType);
+
+          const options = {
+            key: razorpayKeyId,
+            amount: Math.round(amount * 100),
+            currency: "INR",
+            name: "Himalayan Kerala Expeditions",
+            description: `${paymentType.toUpperCase()} payment for ${order.trip_name}`,
+            order_id: order.order_id,
+            prefill: {
+              name: customer.name || "",
+              email: customer.email || "",
+              contact: customer.phone || ""
+            },
+            notes: {
+              trip_name: order.trip_name,
+              payment_type: paymentType
+            },
+            theme: { color: "#D9B25F" },
+            handler: async function (response) {
+              try {
+                showStatus("Verifying payment...", "normal");
+
+                await verifyPayment({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature
+                });
+
+                await savePaymentConfirmation({
+                  paymentType: paymentType,
+                  paidAmount: Number(amount),
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id
+                });
+
+                window.location.href = "payment-confirmation.html";
+              } catch (err) {
+                showStatus(`Payment received but verification/save failed: ${err.message}`, "error");
+              }
+            },
+            modal: {
+              ondismiss: function () {
+                showStatus("Payment popup closed.", "normal");
+              }
+            }
+          };
+
+          const rzp = new Razorpay(options);
+          rzp.open();
+
+        } catch (err) {
+          showStatus(err.message || "Unable to start payment", "error");
+        }
+      }
+
+      function renderPage() {
+        const raw = localStorage.getItem("hkeLatestTripPlan");
+        const emptyState = $("emptyState");
+        const contentWrap = $("contentWrap");
+
+        if (!raw) {
+          emptyState.style.display = "block";
+          contentWrap.style.display = "none";
+          return;
+        }
+
+        try {
+          bookingData = JSON.parse(raw);
+        } catch {
+          emptyState.style.display = "block";
+          contentWrap.style.display = "none";
+          return;
+        }
+
+        const customer = bookingData.customer || {};
+        pricing = estimatePackagePrice(customer);
+        const daysLeft = getDaysBetween(customer.startDate);
+
+        $("bookingTitle").textContent = `Book ${customer.destination || "Your Trip"} Package`;
+        $("bookingSub").textContent = `${customer.startDate || ""} to ${customer.endDate || ""} • ${customer.days || ""} Days`;
+
+        $("summaryGrid").innerHTML = [
+          makeCard("Guest Name", customer.name || "-"),
+          makeCard("Mobile", customer.phone || "-"),
+          makeCard("Email", customer.email || "-"),
+          makeCard("From", customer.fromLocation || "-"),
+          makeCard("Destination", customer.destination || "-"),
+          makeCard("Trip End Point", customer.endPoint || "-"),
+          makeCard("Start Date", customer.startDate || "-"),
+          makeCard("End Date", customer.endDate || "-"),
+          makeCard("Days", String(customer.days || "-")),
+          makeCard("Travellers", String(customer.travellers || "-")),
+          makeCard("Rooms", String(customer.rooms || "-")),
+          makeCard("Hotel Category", customer.hotelClass || "-"),
+          makeCard("Vehicle", customer.vehicle || "-"),
+          makeCard("Food", customer.needFood ? (customer.foodPreference || "Yes") : "No"),
+          makeCard("Travel Type", customer.travelType || "-"),
+          makeCard("Selected Places", (customer.places || []).join(", ") || "-")
+        ].join("");
+
+        $("baseFare").textContent = formatINR(pricing.baseFare);
+        $("seasonAdj").textContent = pricing.seasonFare >= 0
+          ? `+ ${formatINR(pricing.seasonFare)}`
+          : `- ${formatINR(Math.abs(pricing.seasonFare))}`;
+        $("discountVal").textContent = `- ${formatINR(pricing.discountValue)}`;
+        $("finalFare").textContent = formatINR(pricing.finalFare);
+        $("advanceFare").textContent = formatINR(pricing.advanceFare);
+        $("balanceFare").textContent = formatINR(pricing.balanceFare);
+        $("advanceAmtBig").textContent = formatINR(pricing.advanceFare);
+        $("fullAmtBig").textContent = formatINR(pricing.finalFare);
+
+        $("seasonBadge").textContent = `Season: ${pricing.seasonName}`;
+        $("daysLeftBadge").textContent = `Days left: ${daysLeft !== null ? daysLeft : "-"}`;
+
+        if (daysLeft !== null && daysLeft < 10) {
+          $("lateWarningLine").style.display = "block";
+          $("paymentStatusLine").textContent = "Trip starts in less than 10 days. Full payment should be taken immediately.";
+        }
+
+        $("callBtn").href = `tel:+${COMPANY_PHONE}`;
+        $("waBtn").href = `https://wa.me/${COMPANY_PHONE}?text=${encodeURIComponent(
+`Hello HKE,
+I need booking help.
+
+Name: ${customer.name || ""}
+Destination: ${customer.destination || ""}
+Dates: ${customer.startDate || ""} to ${customer.endDate || ""}
+Estimated Package: ${formatINR(pricing.finalFare)}`
+        )}`;
+
+        $("payAdvanceBtn").addEventListener("click", () => {
+          startRazorpayPayment(pricing.advanceFare, "advance");
+        });
+
+        $("payFullBtn").addEventListener("click", () => {
+          startRazorpayPayment(pricing.finalFare, "full");
+        });
+
+        $("payCustomBtn").addEventListener("click", () => {
+          const val = Number($("customAmountInput").value || 0);
+          if (!val || val <= 0) {
+            showStatus("Please enter a valid custom amount.", "error");
+            return;
+          }
+          startRazorpayPayment(val, "custom");
+        });
+
+        emptyState.style.display = "none";
+        contentWrap.style.display = "block";
+      }
+
+      async function init() {
+        try {
+          await fetchPaymentConfig();
+          renderPage();
+        } catch (err) {
+          showStatus(err.message || "Payment setup failed", "error");
+          renderPage();
+        }
+      }
+
+      init();
+    })();
+  </script>
+
+<script src="scripts/hke-polish.js"></script>
+</body>
+</html>

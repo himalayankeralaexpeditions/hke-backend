@@ -1,0 +1,11 @@
+{
+  "name": "hke-frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "web": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

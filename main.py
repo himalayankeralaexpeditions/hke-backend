@@ -9,6 +9,7 @@ import smtplib
 import random
 import secrets
 import requests
+import threading
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
@@ -115,6 +116,7 @@ OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 OTP_BYPASS = os.getenv("OTP_BYPASS", "false").lower() == "true"
 ENABLE_ITINERARY_IMAGES = os.getenv("ENABLE_ITINERARY_IMAGES", "false").lower() == "true"
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
 GOOGLE_ENQUIRY_SHEET_ID = os.getenv("GOOGLE_ENQUIRY_SHEET_ID", "").strip()
 GOOGLE_BOOKING_SHEET_ID = os.getenv("GOOGLE_BOOKING_SHEET_ID", "").strip()
@@ -917,7 +919,7 @@ def format_display_date_range(start_date: str, end_date: str) -> str:
 
 
 def format_inr_display(value: Any) -> str:
-    return f"Rs {round(safe_float(value, 0.0)):,}"
+    return f"\u20b9{round(safe_float(value, 0.0)):,}"
 
 
 def get_google_sheets_client():
@@ -925,14 +927,6 @@ def get_google_sheets_client():
 
     if GOOGLE_SHEETS_CLIENT is not None:
         return GOOGLE_SHEETS_CLIENT
-
-    if not GOOGLE_APPLICATION_CREDENTIALS:
-        logger.info("Google Sheets skipped: GOOGLE_APPLICATION_CREDENTIALS not configured")
-        return None
-
-    if not os.path.exists(GOOGLE_APPLICATION_CREDENTIALS):
-        logger.warning("Google Sheets skipped: credentials file not found")
-        return None
 
     if not gspread or not GoogleServiceAccountCredentials:
         logger.warning("Google Sheets skipped: google client libraries not available")
@@ -943,14 +937,28 @@ def get_google_sheets_client():
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
         ]
-        credentials = GoogleServiceAccountCredentials.from_service_account_file(
-            GOOGLE_APPLICATION_CREDENTIALS,
-            scopes=scopes,
-        )
+        if GOOGLE_SERVICE_ACCOUNT_JSON:
+            credentials_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+            credentials = GoogleServiceAccountCredentials.from_service_account_info(
+                credentials_info,
+                scopes=scopes,
+            )
+        elif GOOGLE_APPLICATION_CREDENTIALS:
+            if not os.path.exists(GOOGLE_APPLICATION_CREDENTIALS):
+                logger.warning("Google Sheets skipped: credentials file not found")
+                return None
+            credentials = GoogleServiceAccountCredentials.from_service_account_file(
+                GOOGLE_APPLICATION_CREDENTIALS,
+                scopes=scopes,
+            )
+        else:
+            logger.info("Google Sheets skipped: GOOGLE_SERVICE_ACCOUNT_JSON not configured")
+            return None
         GOOGLE_SHEETS_CLIENT = gspread.authorize(credentials)
         return GOOGLE_SHEETS_CLIENT
-    except Exception:
+    except Exception as exc:
         logger.exception("Google Sheets skipped: unable to initialize client")
+        logger.warning("Google Sheet write failed: %s", exc)
         return None
 
 
@@ -966,8 +974,9 @@ def get_google_sheet_worksheet(sheet_id: str, tab_name: str):
     try:
         spreadsheet = client_obj.open_by_key(sheet_id)
         return spreadsheet.worksheet(tab_name)
-    except Exception:
+    except Exception as exc:
         logger.exception("Google Sheets skipped: unable to access sheet tab %s", tab_name)
+        logger.warning("Google Sheet write failed: %s", exc)
         return None
 
 
@@ -979,8 +988,9 @@ def append_row_to_google_sheet(sheet_id: str, tab_name: str, row_values: List[An
     try:
         worksheet.append_row([safe_str(value) for value in row_values], value_input_option="USER_ENTERED")
         logger.info(success_log)
-    except Exception:
+    except Exception as exc:
         logger.exception("Google Sheets append failed for tab %s", tab_name)
+        logger.warning("Google Sheet write failed: %s", exc)
 
 
 def append_enquiry_to_sheet(data: Dict[str, Any]):
@@ -1005,14 +1015,14 @@ def append_enquiry_to_sheet(data: Dict[str, Any]):
         safe_int(enquiry.get("rooms")),
         safe_str(enquiry.get("budget")),
         safe_str(enquiry.get("travelType")),
-        safe_str(enquiry.get("hotelClass")),
+        safe_str(enquiry.get("hotelCategory") or enquiry.get("hotelClass")),
         safe_str(enquiry.get("vehicle")),
         safe_str(enquiry.get("guide")),
-        "Yes" if bool(enquiry.get("needFood")) else "No",
+        "Yes" if bool(enquiry.get("foodRequired", enquiry.get("needFood"))) else "No",
         safe_str(enquiry.get("foodPreference")),
         ", ".join([safe_str(place) for place in enquiry.get("places") or [] if safe_str(place)]),
         safe_str(enquiry.get("notes")),
-        safe_str(itinerary.get("title")),
+        safe_str(itinerary.get("title") or data.get("generatedTitle")),
         safe_str(data.get("source"), "AI Planner"),
     ]
     append_row_to_google_sheet(
@@ -1043,7 +1053,7 @@ def append_booking_to_sheet(data: Dict[str, Any]):
         safe_int(customer.get("travellers")),
         safe_int(customer.get("rooms")),
         safe_str(customer.get("vehicle")),
-        safe_str(customer.get("hotelClass")),
+        safe_str(customer.get("hotelCategory") or customer.get("hotelClass")),
         safe_float(data.get("totalAmount")),
         safe_float(data.get("advancePaid")),
         safe_float(data.get("remainingAmount")),
@@ -1091,7 +1101,7 @@ def send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
             f"Total: {format_inr_display(data.get('totalAmount'))}",
             f"Paid: {format_inr_display(data.get('advancePaid'))}",
             f"Remaining: {format_inr_display(data.get('remainingAmount'))}",
-            f"Payment Status: {safe_str(data.get('paymentStatus'))}",
+            f"Status: {safe_str(data.get('paymentStatus'))}",
         ])
     else:
         logger.info("Owner WhatsApp alert skipped: unsupported message type %s", message_type)
@@ -1101,25 +1111,48 @@ def send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
     log_whatsapp_event(owner_number, f"owner_{message_type}_alert", message, "skipped")
 
 
-def safe_append_enquiry_to_sheet(data: Dict[str, Any]):
+def run_in_background(label: str, func, *args):
+    def runner():
+        try:
+            func(*args)
+        except Exception:
+            logger.exception("%s failed", label)
+
+    thread = threading.Thread(target=runner, name=label, daemon=True)
+    thread.start()
+
+
+def _append_enquiry_to_sheet_worker(data: Dict[str, Any]):
     try:
         append_enquiry_to_sheet(data)
     except Exception:
         logger.exception("Enquiry Google Sheet hook failed")
 
 
-def safe_append_booking_to_sheet(data: Dict[str, Any]):
+def _append_booking_to_sheet_worker(data: Dict[str, Any]):
     try:
         append_booking_to_sheet(data)
     except Exception:
         logger.exception("Booking Google Sheet hook failed")
 
 
-def safe_send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
+def _send_owner_whatsapp_alert_worker(message_type: str, data: Dict[str, Any]):
     try:
         send_owner_whatsapp_alert(message_type, data)
     except Exception:
         logger.exception("Owner WhatsApp alert failed")
+
+
+def safe_append_enquiry_to_sheet(data: Dict[str, Any]):
+    run_in_background("safe_append_enquiry_to_sheet", _append_enquiry_to_sheet_worker, data)
+
+
+def safe_append_booking_to_sheet(data: Dict[str, Any]):
+    run_in_background("safe_append_booking_to_sheet", _append_booking_to_sheet_worker, data)
+
+
+def safe_send_owner_whatsapp_alert(message_type: str, data: Dict[str, Any]):
+    run_in_background("safe_send_owner_whatsapp_alert", _send_owner_whatsapp_alert_worker, message_type, data)
 
 
 def serialize_customer_profile(row: sqlite3.Row) -> Dict[str, Any]:
