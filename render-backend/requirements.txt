@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+email-validator
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+pymongo
+openai
+requests
+razorpay
+twilio
+passlib[bcrypt]
