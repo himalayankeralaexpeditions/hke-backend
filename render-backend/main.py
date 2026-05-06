@@ -132,11 +132,14 @@ GOOGLE_CONTACT_TAB = os.getenv("GOOGLE_CONTACT_TAB", "ContactEnquiries").strip()
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
 MSG91_FLOW_ID = os.getenv("MSG91_FLOW_ID", os.getenv("MSG91_SMS_FLOW_ID", "")).strip()
 MSG91_SMS_FLOW_ID = MSG91_FLOW_ID
-MSG91_OTP_TEMPLATE_ID = os.getenv("MSG91_OTP_TEMPLATE_ID", os.getenv("MSG91_DLT_TEMPLATE_ID", "")).strip()
+MSG91_OTP_TEMPLATE_ID = os.getenv(
+    "MSG91_OTP_TEMPLATE_ID",
+    os.getenv("MSG91_TEMPLATE_ID", os.getenv("MSG91_DLT_TEMPLATE_ID", ""))
+).strip()
 MSG91_DLT_TEMPLATE_ID = MSG91_OTP_TEMPLATE_ID
 MSG91_ENTITY_ID = os.getenv("MSG91_ENTITY_ID", "").strip()
 MSG91_DLT_TEMPLATE_VERSION = os.getenv("MSG91_DLT_TEMPLATE_VERSION", "v1.1").strip()
-MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "OTP").strip() or "OTP"
+MSG91_OTP_VARIABLE_NAME = os.getenv("MSG91_OTP_VARIABLE_NAME", "").strip()
 MSG91_OTP_MESSAGE_TEMPLATE = os.getenv(
     "MSG91_OTP_MESSAGE_TEMPLATE",
     "Dear Customer, your OTP for login to Himalayan Kerala Expeditions is {OTP}"
@@ -1459,6 +1462,40 @@ def get_last_otp_provider_error() -> str:
     return safe_str(LAST_OTP_PROVIDER_ERROR_TYPE)
 
 
+def normalize_msg91_mobile(mobile: str) -> str:
+    digits = re.sub(r"\D", "", safe_str(mobile))
+    if digits.startswith("91") and len(digits) > 10:
+        return digits
+    clean_digits = clean_phone(digits)
+    if len(clean_digits) == 10:
+        return f"91{clean_digits}"
+    return digits
+
+
+def mask_phone_for_logs(phone: str) -> str:
+    digits = re.sub(r"\D", "", safe_str(phone))
+    if len(digits) <= 4:
+        return digits
+    return f"{digits[:2]}******{digits[-2:]}"
+
+
+def get_msg91_otp_mode() -> str:
+    if MSG91_FLOW_ID or MSG91_SMS_FLOW_ID:
+        return "msg91-flow"
+    if MSG91_OTP_TEMPLATE_ID:
+        return "msg91-sms-template"
+    return "msg91-unconfigured"
+
+
+def get_msg91_variable_name(mode: str) -> str:
+    configured = safe_str(MSG91_OTP_VARIABLE_NAME)
+    if configured:
+        return configured
+    if mode == "msg91-flow":
+        return "var1"
+    return "OTP"
+
+
 def summarize_msg91_response(response_data: Any) -> Dict[str, Any]:
     if isinstance(response_data, dict):
         return {
@@ -1470,6 +1507,7 @@ def summarize_msg91_response(response_data: Any) -> Dict[str, Any]:
                 or response_data.get("request_id")
                 or response_data.get("requestIdValue")
             ),
+            "error": safe_str(response_data.get("error")),
         }
 
     return {
@@ -1538,6 +1576,37 @@ def otp_storage_available() -> bool:
         return False
 
 
+def get_otp_error_detail(error_type: str) -> str:
+    error_map = {
+        "missing_auth_key": "OTP service is not configured correctly.",
+        "missing_template_id": "OTP template configuration is missing.",
+        "missing_sender_id": "OTP sender configuration is missing.",
+        "transport_error": "OTP service is temporarily unreachable. Please try again.",
+        "provider_http_error": "OTP provider returned an error. Please try again shortly.",
+        "provider_rejected": "OTP provider rejected the request. Please verify the approved MSG91 template or flow configuration.",
+        "otp_session_not_found": "OTP session not found. Please request a new OTP.",
+        "otp_expired": "OTP expired. Please request a new OTP.",
+        "otp_send_failed": "Unable to send OTP right now. Please try again."
+    }
+    return error_map.get(safe_str(error_type), "Unable to process OTP right now. Please try again.")
+
+
+def get_latest_active_otp_session(cur, mobile: str):
+    cur.execute(
+        """
+        SELECT * FROM otp_sessions
+        WHERE mobile = ?
+          AND verified = 0
+          AND expires_at IS NOT NULL
+          AND expires_at >= ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (mobile, utc_now_iso())
+    )
+    return cur.fetchone()
+
+
 def send_msg91_otp(mobile: str, otp: str):
     if OTP_DEV_MODE:
         set_last_otp_provider_error("")
@@ -1548,37 +1617,56 @@ def send_msg91_otp(mobile: str, otp: str):
         set_last_otp_provider_error("missing_auth_key")
         raise RuntimeError("MSG91 auth key is not configured")
 
-    if not MSG91_OTP_TEMPLATE_ID:
-        logger.error("OTP provider misconfigured: MSG91_OTP_TEMPLATE_ID / MSG91_DLT_TEMPLATE_ID not configured")
-        set_last_otp_provider_error("missing_template_id")
-        raise RuntimeError("MSG91 template id is not configured")
-
-    if not MSG91_SENDER_ID:
-        logger.error("OTP provider misconfigured: MSG91_SENDER_ID not configured")
-        set_last_otp_provider_error("missing_sender_id")
-        raise RuntimeError("MSG91 sender id is not configured")
-
-    normalized_mobile = safe_str(mobile)
-    if normalized_mobile.startswith("+"):
-        normalized_mobile = normalized_mobile[1:]
-    if not normalized_mobile.startswith("91"):
-        normalized_mobile = f"91{normalized_mobile}"
-
-    variable_name = MSG91_OTP_VARIABLE_NAME or "OTP"
+    provider_mode = get_msg91_otp_mode()
+    variable_name = get_msg91_variable_name(provider_mode)
+    normalized_mobile = normalize_msg91_mobile(mobile)
+    masked_mobile = mask_phone_for_logs(normalized_mobile)
     resolved_message = build_msg91_otp_message(otp)
-    url = "https://control.msg91.com/api/v5/sms/"
-    payload = {
-        "template_id": MSG91_OTP_TEMPLATE_ID,
-        "templateId": MSG91_OTP_TEMPLATE_ID,
-        "sender": MSG91_SENDER_ID,
-        "mobiles": normalized_mobile,
-        "short_url": 0,
-        "message": resolved_message,
-        variable_name: otp
-    }
-    if MSG91_ENTITY_ID:
-        payload["PE_ID"] = MSG91_ENTITY_ID
-        payload["entity_id"] = MSG91_ENTITY_ID
+    logger.info(
+        "OTP provider selected=%s normalized_phone=%s variable=%s template_configured=%s flow_configured=%s",
+        provider_mode,
+        masked_mobile,
+        variable_name,
+        bool(MSG91_OTP_TEMPLATE_ID),
+        bool(MSG91_FLOW_ID or MSG91_SMS_FLOW_ID)
+    )
+
+    if provider_mode == "msg91-flow":
+        if not MSG91_FLOW_ID:
+            logger.error("OTP provider misconfigured: MSG91_FLOW_ID / MSG91_SMS_FLOW_ID not configured")
+            set_last_otp_provider_error("missing_flow_id")
+            raise RuntimeError("MSG91 flow id is not configured")
+        url = "https://control.msg91.com/api/v5/flow/"
+        payload = {
+            "flow_id": MSG91_FLOW_ID,
+            "mobiles": normalized_mobile,
+            variable_name: otp,
+        }
+        if MSG91_SENDER_ID:
+            payload["sender"] = MSG91_SENDER_ID
+    else:
+        if not MSG91_OTP_TEMPLATE_ID:
+            logger.error("OTP provider misconfigured: MSG91_TEMPLATE_ID / MSG91_OTP_TEMPLATE_ID / MSG91_DLT_TEMPLATE_ID not configured")
+            set_last_otp_provider_error("missing_template_id")
+            raise RuntimeError("MSG91 template id is not configured")
+        if not MSG91_SENDER_ID:
+            logger.error("OTP provider misconfigured: MSG91_SENDER_ID not configured")
+            set_last_otp_provider_error("missing_sender_id")
+            raise RuntimeError("MSG91 sender id is not configured")
+
+        url = "https://control.msg91.com/api/v5/sms/"
+        payload = {
+            "template_id": MSG91_OTP_TEMPLATE_ID,
+            "templateId": MSG91_OTP_TEMPLATE_ID,
+            "sender": MSG91_SENDER_ID,
+            "mobiles": normalized_mobile,
+            "short_url": 0,
+            "message": resolved_message,
+            variable_name: otp,
+        }
+        if MSG91_ENTITY_ID:
+            payload["PE_ID"] = MSG91_ENTITY_ID
+            payload["entity_id"] = MSG91_ENTITY_ID
 
     headers = {
         "authkey": MSG91_AUTH_KEY,
@@ -1589,7 +1677,7 @@ def send_msg91_otp(mobile: str, otp: str):
         response = requests.post(url, json=payload, headers=headers, timeout=30)
     except requests.RequestException as exc:
         set_last_otp_provider_error("transport_error")
-        logger.exception("MSG91 OTP request transport failure for mobile=%s", mobile)
+        logger.exception("MSG91 OTP request transport failure for mobile=%s provider=%s", masked_mobile, provider_mode)
         raise RuntimeError(f"MSG91 request failed: {exc}") from exc
 
     try:
@@ -1597,36 +1685,49 @@ def send_msg91_otp(mobile: str, otp: str):
     except Exception:
         response_data = {"raw": response.text}
 
+    response_summary = summarize_msg91_response(response_data)
+    logger.info(
+        "MSG91 OTP response provider=%s mobile=%s status=%s code=%s message=%s",
+        provider_mode,
+        masked_mobile,
+        response.status_code,
+        safe_str(response_summary.get("status") or response_summary.get("type") or response_summary.get("error")),
+        safe_str(response_summary.get("message") or response_summary.get("status") or response_summary.get("error") or response_summary.get("raw"))
+    )
+
     if response.status_code not in (200, 201, 202):
         set_last_otp_provider_error("provider_http_error")
         logger.error(
-            "MSG91 OTP send failed for mobile=%s status=%s response=%s",
-            mobile,
+            "MSG91 OTP send failed for mobile=%s provider=%s status=%s response=%s",
+            masked_mobile,
+            provider_mode,
             response.status_code,
-            json.dumps(summarize_msg91_response(response_data), default=str)
+            json.dumps(response_summary, default=str)
         )
-        raise RuntimeError(f"MSG91 send failed: {response.text}")
+        raise RuntimeError(get_otp_error_detail("provider_http_error"))
 
     if not is_msg91_accept_response(response, response_data):
         set_last_otp_provider_error("provider_rejected")
         logger.error(
-            "MSG91 OTP rejected for mobile=%s response=%s",
-            mobile,
-            json.dumps(summarize_msg91_response(response_data), default=str)
+            "MSG91 OTP rejected for mobile=%s provider=%s response=%s",
+            masked_mobile,
+            provider_mode,
+            json.dumps(response_summary, default=str)
         )
-        raise RuntimeError(f"MSG91 rejected OTP: {response_data}")
+        raise RuntimeError(get_otp_error_detail("provider_rejected"))
 
     set_last_otp_provider_error("")
     logger.info(
-        "MSG91 OTP accepted for mobile=%s response=%s",
-        mobile,
-        json.dumps(summarize_msg91_response(response_data), default=str)
+        "MSG91 OTP accepted for mobile=%s provider=%s response=%s",
+        masked_mobile,
+        provider_mode,
+        json.dumps(response_summary, default=str)
     )
 
     return {
         "ok": True,
-        "provider": "msg91",
-        "response": summarize_msg91_response(response_data)
+        "provider": provider_mode,
+        "response": response_summary
     }
 
 
@@ -2348,14 +2449,15 @@ def get_otp_debug_data() -> Dict[str, Any]:
         "otp": {
             "sendRouteExists": True,
             "verifyRouteExists": True,
-            "providerConfigured": bool(MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID),
+            "providerConfigured": bool(MSG91_AUTH_KEY and (MSG91_FLOW_ID or (MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID))),
             "authKeyPresent": bool(MSG91_AUTH_KEY),
-            "templateOrFlowConfigured": bool(MSG91_OTP_TEMPLATE_ID),
+            "templateOrFlowConfigured": bool(MSG91_FLOW_ID or MSG91_OTP_TEMPLATE_ID),
             "senderConfigured": bool(MSG91_SENDER_ID),
             "entityConfigured": bool(MSG91_ENTITY_ID),
             "storageAvailable": otp_storage_available(),
             "devMode": OTP_DEV_MODE,
-            "variableName": MSG91_OTP_VARIABLE_NAME,
+            "mode": get_msg91_otp_mode(),
+            "variableName": get_msg91_variable_name(get_msg91_otp_mode()),
             "lastProviderErrorType": get_last_otp_provider_error(),
         }
     }
@@ -3037,10 +3139,11 @@ def health():
         "mongo_configured": bool(MONGODB_URI),
         "mongo_connected": mongo_write_enabled(),
         "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ENQUIRY_RECEIVER),
-        "msg91_configured": bool(MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID),
+        "msg91_configured": bool(MSG91_AUTH_KEY and (MSG91_FLOW_ID or (MSG91_OTP_TEMPLATE_ID and MSG91_SENDER_ID))),
         "msg91_dlt_template_configured": bool(MSG91_DLT_TEMPLATE_ID),
         "msg91_dlt_template_version": MSG91_DLT_TEMPLATE_VERSION,
-        "msg91_variable_name": MSG91_OTP_VARIABLE_NAME,
+        "msg91_mode": get_msg91_otp_mode(),
+        "msg91_variable_name": get_msg91_variable_name(get_msg91_otp_mode()),
         "otp_bypass": OTP_BYPASS,
         "admin_login_enabled": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
         "model": OPENAI_MODEL
@@ -3141,7 +3244,7 @@ def send_otp(payload: SendOTPRequest):
     cur = conn.cursor()
 
     try:
-        cur.execute("DELETE FROM otp_sessions WHERE mobile = ?", (mobile,))
+        cur.execute("DELETE FROM otp_sessions WHERE mobile = ? AND verified = 0", (mobile,))
         cur.execute("""
             INSERT INTO otp_sessions (
                 mobile, otp_code, attempts, verified, expires_at, created_at
@@ -3177,18 +3280,19 @@ def send_otp(payload: SendOTPRequest):
         try:
             conn = get_db()
             cur = conn.cursor()
-            cur.execute("DELETE FROM otp_sessions WHERE mobile = ?", (mobile,))
+            cur.execute("DELETE FROM otp_sessions WHERE mobile = ? AND verified = 0", (mobile,))
             conn.commit()
             conn.close()
         except Exception:
             logger.exception("Unable to clean failed OTP session for mobile=%s", mobile)
         logger.exception("OTP send failed for mobile=%s", mobile)
+        error_type = get_last_otp_provider_error() or "otp_send_failed"
         return JSONResponse(
             status_code=502,
             content={
                 "ok": False,
-                "detail": safe_str(e) or "Unable to send OTP right now",
-                "errorType": get_last_otp_provider_error() or "otp_send_failed"
+                "detail": get_otp_error_detail(error_type),
+                "errorType": error_type
             }
         )
 
@@ -3198,12 +3302,8 @@ def send_otp(payload: SendOTPRequest):
         "mobile": mobile,
         "phone": mobile,
         "expires_in_minutes": OTP_EXPIRY_MINUTES,
-        "provider": "msg91"
+        "provider": provider_response.get("provider") if isinstance(provider_response, dict) else "msg91"
     }
-
-    if OTP_DEV_MODE:
-        resp["debugOtp"] = otp
-        resp["debug_otp"] = otp
 
     if provider_response and OTP_DEV_MODE:
         resp["provider_response"] = provider_response
@@ -3218,29 +3318,37 @@ def verify_otp(payload: VerifyOTPRequest):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT * FROM otp_sessions
-        WHERE mobile = ?
-        ORDER BY id DESC
-        LIMIT 1
-    """, (mobile,))
-    row = cur.fetchone()
+    row = get_latest_active_otp_session(cur, mobile)
 
     if not row:
+        cur.execute(
+            """
+            SELECT * FROM otp_sessions
+            WHERE mobile = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (mobile,)
+        )
+        latest_row = cur.fetchone()
         conn.close()
+        if latest_row and safe_int(latest_row["verified"], 0) == 1:
+            return {
+                "ok": True,
+                "message": "Already verified",
+                "mobile": mobile,
+                "phone": mobile,
+                "verified": True
+            }
+
+        if latest_row:
+            logger.warning("OTP verification failed: no active OTP session for mobile=%s", mobile)
+            create_system_alert("otp", "OTP expired", f"No active OTP session found for {mobile}", phone=mobile, priority="medium")
+            raise HTTPException(status_code=400, detail=get_otp_error_detail("otp_expired"))
+
         logger.warning("OTP verification failed: session not found for mobile=%s", mobile)
         create_system_alert("otp", "OTP session missing", f"OTP session not found for {mobile}", phone=mobile, priority="medium")
-        raise HTTPException(status_code=404, detail="OTP session not found")
-
-    if safe_int(row["verified"], 0) == 1:
-        conn.close()
-        return {
-            "ok": True,
-            "message": "Already verified",
-            "mobile": mobile,
-            "phone": mobile,
-            "verified": True
-        }
+        raise HTTPException(status_code=404, detail=get_otp_error_detail("otp_session_not_found"))
 
     attempts = safe_int(row["attempts"], 0)
     if attempts >= OTP_MAX_ATTEMPTS:
