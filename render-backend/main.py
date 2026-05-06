@@ -1621,21 +1621,17 @@ def send_msg91_otp(mobile: str, otp: str):
     variable_name = get_msg91_variable_name(provider_mode)
     normalized_mobile = normalize_msg91_mobile(mobile)
     masked_mobile = mask_phone_for_logs(normalized_mobile)
-    resolved_message = build_msg91_otp_message(otp)
-    logger.info(
-        "OTP provider selected=%s normalized_phone=%s variable=%s template_configured=%s flow_configured=%s",
-        provider_mode,
-        masked_mobile,
-        variable_name,
-        bool(MSG91_OTP_TEMPLATE_ID),
-        bool(MSG91_FLOW_ID or MSG91_SMS_FLOW_ID)
-    )
 
     if provider_mode == "msg91-flow":
         if not MSG91_FLOW_ID:
             logger.error("OTP provider misconfigured: MSG91_FLOW_ID / MSG91_SMS_FLOW_ID not configured")
             set_last_otp_provider_error("missing_flow_id")
             raise RuntimeError("MSG91 flow id is not configured")
+        logger.info(
+            "OTP provider selected=msg91-flow only normalized_phone=%s variable=%s",
+            masked_mobile,
+            variable_name
+        )
         url = "https://control.msg91.com/api/v5/flow/"
         payload = {
             "flow_id": MSG91_FLOW_ID,
@@ -1645,6 +1641,11 @@ def send_msg91_otp(mobile: str, otp: str):
         if MSG91_SENDER_ID:
             payload["sender"] = MSG91_SENDER_ID
     else:
+        logger.info(
+            "OTP provider selected=msg91-sms-template normalized_phone=%s variable=%s",
+            masked_mobile,
+            variable_name
+        )
         if not MSG91_OTP_TEMPLATE_ID:
             logger.error("OTP provider misconfigured: MSG91_TEMPLATE_ID / MSG91_OTP_TEMPLATE_ID / MSG91_DLT_TEMPLATE_ID not configured")
             set_last_otp_provider_error("missing_template_id")
@@ -1654,6 +1655,7 @@ def send_msg91_otp(mobile: str, otp: str):
             set_last_otp_provider_error("missing_sender_id")
             raise RuntimeError("MSG91 sender id is not configured")
 
+        resolved_message = build_msg91_otp_message(otp)
         url = "https://control.msg91.com/api/v5/sms/"
         payload = {
             "template_id": MSG91_OTP_TEMPLATE_ID,
