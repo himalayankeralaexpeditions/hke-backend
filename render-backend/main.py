@@ -271,6 +271,7 @@ def init_db():
 
 @app.on_event("startup")
 def startup_event():
+    logger.info("ACTIVE_OTP_PROVIDER=MSG91_FLOW_ONLY")
     init_db()
     initialize_mongo()
 
@@ -1549,17 +1550,6 @@ def is_msg91_accept_response(response: requests.Response, response_data: Any) ->
             return True
 
     return False
-
-
-def build_msg91_otp_message(otp: str) -> str:
-    template = safe_str(
-        MSG91_OTP_MESSAGE_TEMPLATE,
-        "Dear Customer, your OTP for login to Himalayan Kerala Expeditions is {OTP}"
-    )
-    message = template.replace("{OTP}", otp)
-    message = message.replace("##OTP##", otp)
-    message = message.replace("{{OTP}}", otp)
-    return message
 
 
 def otp_storage_available() -> bool:

@@ -20,33 +20,9 @@ class VerifyOTPRequest(BaseModel):
 
 @router.post("/send-otp")
 def send_otp(data: SendOTPRequest):
-    try:
-        client.verify.v2.services(
-            TWILIO_VERIFY_SERVICE_SID
-        ).verifications.create(
-            to=data.phone,
-            channel="sms"
-        )
-        return {"status": "success", "message": "OTP sent"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=410, detail="OTP route disabled. Use /api/auth/send-otp")
 
 
 @router.post("/verify-otp")
 def verify_otp(data: VerifyOTPRequest):
-    try:
-        result = client.verify.v2.services(
-            TWILIO_VERIFY_SERVICE_SID
-        ).verification_checks.create(
-            to=data.phone,
-            code=data.code
-        )
-
-        if result.status == "approved":
-            return {"status": "success", "message": "OTP verified"}
-        else:
-            raise HTTPException(status_code=400, detail="Invalid OTP")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=410, detail="OTP route disabled. Use /api/auth/verify-otp")

@@ -297,6 +297,7 @@ def write_admin_content_store(data: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.on_event("startup")
 def startup_event():
+    logger.info("ACTIVE_OTP_PROVIDER=MSG91_FLOW_ONLY")
     init_db()
     initialize_mongo()
 
