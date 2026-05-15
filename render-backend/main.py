@@ -12,6 +12,7 @@ import requests
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import List, Optional, Any, Dict
+from urllib.parse import quote_plus
 
 from bson import ObjectId
 from dotenv import load_dotenv
@@ -127,6 +128,8 @@ GOOGLE_CONTACT_SHEET_ID = os.getenv(
 GOOGLE_ENQUIRY_TAB = os.getenv("GOOGLE_ENQUIRY_TAB", GOOGLE_SHEET_TAB or "Sheet1").strip() or "Sheet1"
 GOOGLE_BOOKING_TAB = os.getenv("GOOGLE_BOOKING_TAB", "ConfirmedBookings").strip() or "ConfirmedBookings"
 GOOGLE_CONTACT_TAB = os.getenv("GOOGLE_CONTACT_TAB", "ContactEnquiries").strip() or "ContactEnquiries"
+ADVENTURE_GOOGLE_SHEET_ID = os.getenv("ADVENTURE_GOOGLE_SHEET_ID", "").strip()
+ADVENTURE_GOOGLE_SHEET_TAB = os.getenv("ADVENTURE_GOOGLE_SHEET_TAB", "AdventureTrails").strip() or "AdventureTrails"
 
 # OTP / MSG91
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "").strip()
@@ -361,6 +364,11 @@ def ensure_app_mongo_indexes():
     db["contact_leads"].create_index("createdAt")
     db["system_alerts"].create_index("createdAt")
     db["system_alerts"].create_index("type")
+    db["adventure_trails"].create_index("phone")
+    db["adventure_trails"].create_index("startDate")
+    db["adventure_trails"].create_index("updatedAt")
+    db["adventure_payments"].create_index("phone")
+    db["adventure_payments"].create_index("paymentKey", unique=True, sparse=True)
 
 
 def safe_mongo_write(action: str, func):
@@ -1137,6 +1145,541 @@ def append_booking_to_google_sheet(data: Dict[str, Any]) -> Dict[str, Any]:
         get_google_booking_tab(),
         row,
         context="booking_confirmation"
+    )
+
+
+def add_days_iso(start_date: str, days: int) -> str:
+    clean_date = safe_str(start_date)
+    if not clean_date:
+        return ""
+    try:
+        date_value = datetime.strptime(clean_date, "%Y-%m-%d")
+        return (date_value + timedelta(days=max(0, days))).strftime("%Y-%m-%d")
+    except Exception:
+        return clean_date
+
+
+def bool_to_yes_no(value: Any) -> str:
+    return "Yes" if bool(value) else "No"
+
+
+def get_adventure_sheet_id() -> str:
+    return safe_str(ADVENTURE_GOOGLE_SHEET_ID or GOOGLE_ENQUIRY_SHEET_ID or GOOGLE_SHEET_ID)
+
+
+def get_adventure_sheet_tab() -> str:
+    return safe_str(ADVENTURE_GOOGLE_SHEET_TAB or "AdventureTrails", "AdventureTrails")
+
+
+def get_adventure_margin(budget_level: str) -> int:
+    normalized = safe_str(budget_level).lower()
+    if normalized == "budget":
+        return 5000
+    if normalized == "premium":
+        return 15000
+    return 9000
+
+
+def adventure_meals_required(meal_preference: str) -> bool:
+    normalized = safe_str(meal_preference).lower()
+    return normalized not in {"", "self managed", "self-managed", "self arranged", "self-arranged", "no meals", "none"}
+
+
+def calculate_adventure_price(data: Dict[str, Any]) -> Dict[str, Any]:
+    days = max(2, safe_int(data.get("days"), 4))
+    travellers = max(1, safe_int(data.get("travellers"), 2))
+    nights = max(1, days - 1)
+    base_cost = travellers * days * 800
+
+    if bool(data.get("guideRequired")):
+        base_cost += days * 1500
+    if bool(data.get("campingRequired")):
+        base_cost += travellers * nights * 1800
+    if adventure_meals_required(data.get("mealPreference")):
+        base_cost += travellers * days * 900
+    if bool(data.get("vehicleRequired")):
+        base_cost += days * 5000
+
+    final_price = int(round(base_cost + get_adventure_margin(safe_str(data.get("budgetLevel"), "Standard"))))
+    advance_amount = int(round(final_price * 0.25))
+    balance_amount = max(0, final_price - advance_amount)
+    return {
+        "finalPrice": final_price,
+        "advanceAmount": advance_amount,
+        "balanceAmount": balance_amount,
+        "currency": "INR",
+    }
+
+
+def build_adventure_gallery(data: Dict[str, Any]) -> List[Dict[str, str]]:
+    trail_type = safe_str(data.get("trailType")).lower()
+    notes = safe_str(data.get("notes")).lower()
+    vehicle_required = bool(data.get("vehicleRequired"))
+    camping_required = bool(data.get("campingRequired"))
+    gallery = [{
+        "src": "media/drone-expedition-banner.jpg",
+        "alt": "Adventure expedition overview",
+        "caption": "Expedition framing with wide terrain context and route intent."
+    }]
+
+    if "digital detox" in trail_type:
+        gallery.extend([
+            {
+                "src": "media/digital-detox-cabin.jpg",
+                "alt": "Digital detox cabin",
+                "caption": "Low-noise forest stays built around slower movement."
+            },
+            {
+                "src": "media/hidden-himalayan-village.jpg",
+                "alt": "Remote mountain settlement",
+                "caption": "Offbeat settlement access with calm, practical pacing."
+            }
+        ])
+    elif "overland" in trail_type or vehicle_required:
+        gallery.extend([
+            {
+                "src": "media/overland-expedition.jpg",
+                "alt": "Overland support route",
+                "caption": "Vehicle-supported route progression across remote stretches."
+            },
+            {
+                "src": "media/offroad-expedition-convoy.jpg",
+                "alt": "Offroad expedition convoy",
+                "caption": "Convoy movement with realistic support halts and trail logistics."
+            }
+        ])
+    else:
+        gallery.extend([
+            {
+                "src": "media/solo-explorer-trek.jpg",
+                "alt": "Trekking route",
+                "caption": "Trail-led movement with deliberate ascent and recovery rhythm."
+            },
+            {
+                "src": "media/photography-survival-camp.jpg",
+                "alt": "Adventure field camp",
+                "caption": "Field-style camp atmosphere with wilderness utility."
+            }
+        ])
+
+    if camping_required or "camp" in trail_type or "camp" in notes:
+        gallery.append({
+            "src": "media/stargazing-camp.jpg",
+            "alt": "Camp night setup",
+            "caption": "Night camp sequencing with realistic setup and recovery time."
+        })
+    if "motorcycle" in notes:
+        gallery.append({
+            "src": "media/motorcycle-expedition.jpg",
+            "alt": "Motorcycle expedition",
+            "caption": "Support-led two-wheel movement with disciplined route planning."
+        })
+
+    unique_gallery: List[Dict[str, str]] = []
+    seen = set()
+    for item in gallery:
+        src = safe_str(item.get("src"))
+        if not src or src in seen:
+            continue
+        seen.add(src)
+        unique_gallery.append(item)
+    return unique_gallery[:5]
+
+
+def build_google_maps_search_url(query: str) -> str:
+    clean_query = safe_str(query)
+    if not clean_query:
+        return ""
+    return f"https://www.google.com/maps/search/?api=1&query={quote_plus(clean_query)}"
+
+
+def build_google_maps_directions_url(origin: str, destination: str, waypoints: Optional[List[str]] = None) -> str:
+    clean_origin = safe_str(origin)
+    clean_destination = safe_str(destination)
+    if not clean_origin and not clean_destination:
+        return ""
+
+    base = "https://www.google.com/maps/dir/?api=1&travelmode=driving"
+    if clean_origin:
+        base += f"&origin={quote_plus(clean_origin)}"
+    if clean_destination:
+        base += f"&destination={quote_plus(clean_destination)}"
+    clean_waypoints = [safe_str(item) for item in (waypoints or []) if safe_str(item)]
+    if clean_waypoints:
+        base += f"&waypoints={quote_plus('|'.join(clean_waypoints))}"
+    return base
+
+
+def build_adventure_route_map(data: Dict[str, Any], itinerary: Dict[str, Any]) -> Dict[str, Any]:
+    destination = safe_str(data.get("destination"))
+    day_routes = []
+    previous_stop = destination
+
+    for index, day in enumerate(itinerary.get("days") or []):
+        route_text = safe_str(day.get("route"))
+        segments = [segment.strip() for segment in re.split(r"->|→|to", route_text) if segment.strip()]
+        route_origin = segments[0] if segments else previous_stop or destination
+        route_destination = segments[-1] if len(segments) > 1 else (destination or route_origin)
+        if len(segments) == 1 and route_destination == route_origin:
+            route_destination = destination or route_origin
+        waypoints = segments[1:-1] if len(segments) > 2 else []
+        day_routes.append({
+            "day": safe_int(day.get("day"), index + 1),
+            "title": safe_str(day.get("title"), f"Day {index + 1}"),
+            "origin": route_origin or destination,
+            "destination": route_destination or destination,
+            "waypoints": waypoints,
+        })
+        previous_stop = route_destination or previous_stop
+
+    places = [destination]
+    for route in day_routes:
+        for part in [route.get("origin")] + list(route.get("waypoints") or []) + [route.get("destination")]:
+            clean_part = safe_str(part)
+            if clean_part and clean_part not in places:
+                places.append(clean_part)
+
+    search_query = ", ".join([item for item in places if item])
+    directions_url = build_google_maps_directions_url(destination, destination, places[1:-1] if len(places) > 2 else [])
+    return {
+        "startPoint": destination,
+        "destination": destination,
+        "endPoint": destination,
+        "places": places,
+        "dayRoutes": day_routes,
+        "googleMapsSearchUrl": build_google_maps_search_url(search_query),
+        "googleMapsDirectionsUrl": directions_url,
+    }
+
+
+def build_adventure_prompt(data: Dict[str, Any], pricing: Dict[str, Any]) -> str:
+    return f"""
+You are a senior expedition planner at Himalayan Kerala Expeditions.
+
+Prepare a premium customer-facing adventure trail itinerary with practical route logic, realistic drive and trek timing,
+safety-first planning, rest breaks, acclimatization where needed, guide and camping notes, and expedition-ready polish.
+
+Customer request:
+{json.dumps(data, ensure_ascii=False, indent=2)}
+
+Pricing summary for reference only:
+{json.dumps(pricing, ensure_ascii=False, indent=2)}
+
+Return ONLY valid JSON in this exact structure:
+{{
+  "title": "string",
+  "summary": "3 to 5 line premium expedition summary",
+  "nearestAirport": "string",
+  "nearestRailwayStation": "string",
+  "trailDifficulty": "Easy / Moderate / Challenging / Technical",
+  "bestSeason": "string",
+  "requiredFitnessLevel": "string",
+  "inclusions": ["string", "string", "string", "string"],
+  "safetyNotes": ["string", "string", "string", "string"],
+  "days": [
+    {{
+      "day": 1,
+      "title": "string",
+      "route": "string",
+      "driveWindow": "string",
+      "trekWindow": "string",
+      "stay": "string",
+      "meals": "string",
+      "activities": ["string", "string", "string", "string"],
+      "notes": "string"
+    }}
+  ]
+}}
+
+Rules:
+- Sound like a senior expedition planner, not a chatbot.
+- Keep the route practical, terrain-aware, and safety-conscious.
+- Mention realistic rest halts, trail pacing, drive windows, and overnight logic.
+- Mention acclimatization where altitude or long approach days make sense.
+- Mention guide, vehicle, and camping requirements naturally according to the request.
+- Do not expose internal pricing breakdown.
+- Do not use markdown.
+- Do not include explanation outside JSON.
+""".strip()
+
+
+def fallback_adventure_itinerary(data: Dict[str, Any], pricing: Dict[str, Any]) -> Dict[str, Any]:
+    destination = safe_str(data.get("destination"))
+    trail_type = safe_str(data.get("trailType"), "Adventure Trail")
+    days = max(2, safe_int(data.get("days"), 4))
+    travellers = max(1, safe_int(data.get("travellers"), 2))
+    fitness_level = safe_str(data.get("fitnessLevel"), "Moderate")
+    camping_required = bool(data.get("campingRequired"))
+    guide_required = bool(data.get("guideRequired"))
+    vehicle_required = bool(data.get("vehicleRequired"))
+    meals = safe_str(data.get("mealPreference"), "Flexible")
+    day_items = []
+
+    for index in range(days):
+        if index == 0:
+            title = f"Arrival and expedition briefing for {destination}"
+            route = f"Arrival corridor to {destination} base"
+            activities = [
+                f"Arrive into the {destination} access zone and complete the main transfer with proper hydration, washroom, and meal halts.",
+                "Conduct a field briefing covering terrain character, weather pattern, network limitations, and next-day movement timing.",
+                "Check pack discipline, footwear readiness, water load, personal medication, and camp comfort items before trail movement begins.",
+                "Keep the first evening light so the group recovers well before the active trail phase starts."
+            ]
+            notes = "The opening block is intentionally conservative so the group can absorb travel fatigue before pushing into trail effort."
+            stay = "Camp setup at base location" if camping_required else "Trail lodge / expedition stay"
+            drive_window = "4 to 6 hrs including halts" if vehicle_required else "Independent arrival window"
+            trek_window = "Short orientation walk only"
+        elif index == days - 1:
+            title = "Exit trail, recovery halt, and departure"
+            route = f"{destination} trail exit to onward departure point"
+            activities = [
+                "Start with a measured pack-out after breakfast rather than rushing the final movement window.",
+                "Use a controlled descent or road exit with enough time for regrouping, gear loading, and one proper refreshment stop.",
+                "Keep the main transfer practical so the group reaches the onward departure point without compressing safety margin.",
+                "Close the expedition with a realistic transfer plan instead of overloading the last day."
+            ]
+            notes = "Departure keeps buffer time intact so physical fatigue does not spill into the final transfer."
+            stay = "Checkout / departure day"
+            drive_window = "3 to 5 hrs depending on exit road" if vehicle_required else "Departure as per onward plan"
+            trek_window = "2 to 4 hrs easy exit movement"
+        else:
+            title = f"Trail movement day {index + 1} through {destination}"
+            route = f"{destination} trail section {index} to {destination} trail section {index + 1}"
+            activities = [
+                "Begin after breakfast, hydration check, and a simple warm-up so the group does not start cold.",
+                "Move in realistic trail rhythm with short pauses for water, terrain reset, and controlled breathing recovery.",
+                "Keep the main scenic section in the centre of the day instead of forcing late, fatigued arrival into camp.",
+                "Reach camp or stay with enough daylight for recovery, hot drinks, gear drying, and an orderly evening routine."
+            ]
+            notes = "The middle days prioritise terrain rhythm and recovery discipline instead of chasing an aggressive pace."
+            stay = "Camp stay with expedition setup" if camping_required else "Trail stay / eco-lodge"
+            drive_window = "1 to 3 hrs support / approach window" if vehicle_required else "No dedicated vehicle leg required"
+            trek_window = "4 to 6 hrs with planned short breaks"
+
+        day_items.append({
+            "day": index + 1,
+            "title": title,
+            "route": route,
+            "driveWindow": drive_window,
+            "trekWindow": trek_window,
+            "stay": stay,
+            "meals": meals if adventure_meals_required(meals) else "Self managed meals",
+            "activities": activities,
+            "notes": notes
+        })
+
+    difficulty = "Challenging" if fitness_level.lower() in {"strong", "high altitude ready"} else ("Moderate" if fitness_level.lower() == "moderate" else "Easy")
+    guide_line = "Field guide / trail lead support as requested" if guide_required else "Independent movement with remote coordination support"
+    vehicle_line = "Vehicle support for approach, exit, or logistics as required" if vehicle_required else "No dedicated vehicle support included"
+
+    return {
+        "title": f"{destination} {trail_type} | {days} Days",
+        "summary": (
+            f"This {days}-day {trail_type.lower()} in {destination} has been arranged in the tone of a senior expedition planner, "
+            f"balancing terrain effort, recovery windows, practical movement timing, and premium HKE trail handling for {travellers} traveller(s)."
+        ),
+        "nearestAirport": f"Nearest airport for {destination} access",
+        "nearestRailwayStation": f"Nearest railway station for {destination} access",
+        "trailDifficulty": difficulty,
+        "bestSeason": "March to June and September to November, subject to route conditions",
+        "requiredFitnessLevel": fitness_level,
+        "inclusions": [
+            guide_line,
+            vehicle_line,
+            "Day-wise trail planning with route pacing, rest logic, and field-aware sequencing",
+            "Basic expedition coordination support from Himalayan Kerala Expeditions"
+        ],
+        "safetyNotes": [
+            "Carry waterproof layers, sun protection, hydration support, and personal medication throughout the route.",
+            "Longer trail sections should start early to protect daylight margin and weather flexibility.",
+            "Altitude, forest, river, and road conditions may require same-day route moderation for safety.",
+            "Emergency response timing depends on terrain, local road-head access, and network coverage."
+        ],
+        "days": day_items,
+        "pricing": pricing,
+    }
+
+
+def build_adventure_sheet_row(data: Dict[str, Any]) -> List[Any]:
+    customer = data.get("customer") or {}
+    itinerary = data.get("itinerary") or {}
+    pricing = data.get("pricing") or {}
+    return [
+        safe_str(data.get("createdAt"), utc_now_iso()),
+        safe_str(customer.get("name")),
+        clean_phone(safe_str(customer.get("phone"))),
+        safe_str(customer.get("email")),
+        safe_str(customer.get("trailType")),
+        safe_str(customer.get("destination")),
+        safe_str(customer.get("startDate")),
+        safe_int(customer.get("days")),
+        safe_int(customer.get("travellers")),
+        safe_str(customer.get("fitnessLevel")),
+        bool_to_yes_no(customer.get("campingRequired")),
+        bool_to_yes_no(customer.get("guideRequired")),
+        bool_to_yes_no(customer.get("vehicleRequired")),
+        safe_str(customer.get("mealPreference")),
+        safe_str(customer.get("budgetLevel")),
+        safe_str(itinerary.get("nearestAirport")),
+        safe_str(itinerary.get("nearestRailwayStation")),
+        safe_str(itinerary.get("trailDifficulty")),
+        safe_float(pricing.get("finalPrice")),
+        safe_float(pricing.get("advanceAmount")),
+        safe_float(pricing.get("balanceAmount")),
+        safe_str(data.get("paymentStatus"), "pending"),
+        safe_str(customer.get("notes")),
+    ]
+
+
+def upsert_adventure_enquiry_to_sheet(data: Dict[str, Any]) -> Dict[str, Any]:
+    sheet_id = get_adventure_sheet_id()
+    tab_name = get_adventure_sheet_tab()
+    worksheet = get_google_sheet_worksheet(sheet_id, tab_name)
+    service_account_email = get_google_service_account_email()
+
+    if not worksheet:
+        return _build_google_sheet_result(
+            False,
+            "Unable to connect to the adventure Google Sheet right now. Please try again later.",
+            sheet_id=sheet_id,
+            tab_name=tab_name,
+            context="adventure_enquiry",
+            error="worksheet_unavailable",
+            service_account_email=service_account_email
+        )
+
+    row_values = [safe_str(value) for value in build_adventure_sheet_row(data)]
+    match_phone = clean_phone(safe_str((data.get("customer") or {}).get("phone")))
+    match_destination = safe_str((data.get("customer") or {}).get("destination"))
+    match_start_date = safe_str((data.get("customer") or {}).get("startDate"))
+
+    try:
+        rows = worksheet.get_all_values()
+        matched_row_index = None
+        for index, row in enumerate(rows[1:], start=2):
+            existing_phone = clean_phone(row[2] if len(row) > 2 else "")
+            existing_destination = safe_str(row[5] if len(row) > 5 else "")
+            existing_start_date = safe_str(row[6] if len(row) > 6 else "")
+            if existing_phone == match_phone and existing_destination == match_destination and existing_start_date == match_start_date:
+                matched_row_index = index
+                break
+
+        row_count_before = len(rows)
+        if matched_row_index:
+            worksheet.update(
+                f"A{matched_row_index}:W{matched_row_index}",
+                [row_values],
+                value_input_option="USER_ENTERED"
+            )
+            row_count_after = row_count_before
+        else:
+            worksheet.append_row(row_values, value_input_option="USER_ENTERED")
+            row_count_after = row_count_before + 1
+
+        return _build_google_sheet_result(
+            True,
+            "Adventure Google Sheet updated successfully",
+            sheet_id=sheet_id,
+            tab_name=tab_name,
+            context="adventure_enquiry",
+            service_account_email=service_account_email,
+            row_count_before=row_count_before,
+            row_count_after=row_count_after
+        )
+    except Exception as exc:
+        logger.exception("Adventure Google Sheet write failed")
+        return _build_google_sheet_result(
+            False,
+            "We received your adventure request, but saving it to Google Sheets failed.",
+            sheet_id=sheet_id,
+            tab_name=tab_name,
+            context="adventure_enquiry",
+            error=safe_str(exc, "append_failed"),
+            service_account_email=service_account_email
+        )
+
+
+def save_adventure_plan_mongo(data: Dict[str, Any], itinerary: Dict[str, Any], pricing: Dict[str, Any], source: str):
+    phone = clean_phone(safe_str(data.get("phone")))
+    if len(phone) != 10:
+        return
+    now_ts = utc_now_iso()
+    safe_mongo_write(
+        "save_adventure_plan",
+        lambda: get_collection("adventure_trails").update_one(
+            {
+                "phone": phone,
+                "destination": safe_str(data.get("destination")),
+                "startDate": safe_str(data.get("startDate")),
+                "trailType": safe_str(data.get("trailType")),
+            },
+            {
+                "$set": {
+                    "name": safe_str(data.get("name")),
+                    "email": safe_str(data.get("email")),
+                    "phone": phone,
+                    "trailType": safe_str(data.get("trailType")),
+                    "destination": safe_str(data.get("destination")),
+                    "startDate": safe_str(data.get("startDate")),
+                    "days": safe_int(data.get("days")),
+                    "travellers": safe_int(data.get("travellers")),
+                    "fitnessLevel": safe_str(data.get("fitnessLevel")),
+                    "campingRequired": bool(data.get("campingRequired")),
+                    "guideRequired": bool(data.get("guideRequired")),
+                    "vehicleRequired": bool(data.get("vehicleRequired")),
+                    "mealPreference": safe_str(data.get("mealPreference")),
+                    "budgetLevel": safe_str(data.get("budgetLevel")),
+                    "notes": safe_str(data.get("notes")),
+                    "itinerary": normalize_for_mongo(itinerary),
+                    "pricing": normalize_for_mongo(pricing),
+                    "source": safe_str(source),
+                    "updatedAt": now_ts,
+                },
+                "$setOnInsert": {
+                    "createdAt": now_ts,
+                }
+            },
+            upsert=True
+        )
+    )
+
+
+def upsert_adventure_payment_mongo(data: Dict[str, Any]):
+    customer = data.get("customer") or {}
+    payment = data.get("payment") or {}
+    pricing = data.get("pricing") or {}
+    itinerary = data.get("itinerary") or {}
+    phone = clean_phone(safe_str(customer.get("phone")))
+    payment_key = safe_str(payment.get("razorpayPaymentId") or payment.get("razorpayOrderId"))
+    if not payment_key:
+        payment_key = f"ADV-{phone}-{safe_str(customer.get('startDate'))}-{safe_str(customer.get('destination'))}"
+
+    now_ts = utc_now_iso()
+    safe_mongo_write(
+        "upsert_adventure_payment",
+        lambda: get_collection("adventure_payments").update_one(
+            {"paymentKey": payment_key},
+            {
+                "$set": {
+                    "paymentKey": payment_key,
+                    "phone": phone,
+                    "name": safe_str(customer.get("name")),
+                    "email": safe_str(customer.get("email")),
+                    "destination": safe_str(customer.get("destination")),
+                    "trailType": safe_str(customer.get("trailType")),
+                    "startDate": safe_str(customer.get("startDate")),
+                    "paymentStatus": safe_str(data.get("paymentStatus")),
+                    "payment": normalize_for_mongo(payment),
+                    "pricing": normalize_for_mongo(pricing),
+                    "itinerary": normalize_for_mongo(itinerary),
+                    "updatedAt": now_ts,
+                },
+                "$setOnInsert": {
+                    "createdAt": now_ts,
+                }
+            },
+            upsert=True
+        )
     )
 
 
@@ -2758,6 +3301,75 @@ class PilgrimageRequest(BaseModel):
         raise ValueError("At least one pilgrimage place is required")
 
 
+class AdventureTrailRequest(BaseModel):
+    name: str
+    phone: str
+    email: EmailStr
+    trailType: str
+    destination: str
+    startDate: str
+    days: int = Field(..., ge=2, le=21)
+    travellers: int = Field(default=2, ge=1, le=20)
+    fitnessLevel: str
+    campingRequired: bool = False
+    guideRequired: bool = False
+    vehicleRequired: bool = False
+    mealPreference: str = "Veg + Non-Veg"
+    budgetLevel: str = "Standard"
+    notes: Optional[str] = ""
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+    @field_validator("name", "trailType", "destination", "fitnessLevel")
+    @classmethod
+    def validate_required_text(cls, v):
+        if not safe_str(v):
+            raise ValueError("This field is required")
+        return safe_str(v)
+
+
+class AdventureEnquiryRequest(BaseModel):
+    customer: Dict[str, Any]
+    itinerary: Dict[str, Any]
+    pricing: Dict[str, Any]
+    routeMap: Optional[Dict[str, Any]] = None
+    paymentStatus: str = "pending"
+    payment: Optional[Dict[str, Any]] = None
+    planSource: Optional[str] = ""
+
+
+class AdventureRazorpayOrderRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+    currency: str = "INR"
+    receipt: Optional[str] = ""
+    name: str
+    email: EmailStr
+    phone: str
+    planTitle: str
+    trailType: str
+    destination: str
+    startDate: str
+    days: int = Field(..., ge=2, le=21)
+    travellers: int = Field(..., ge=1, le=20)
+    finalPrice: float = Field(..., gt=0)
+    advanceAmount: float = Field(..., gt=0)
+    balanceAmount: float = Field(default=0, ge=0)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        digits = clean_phone(v)
+        if len(digits) != 10:
+            raise ValueError("Phone must be 10 digits")
+        return digits
+
+
 class ChatEditRequest(BaseModel):
     instruction: Optional[str] = ""
     message: Optional[str] = ""
@@ -3698,6 +4310,164 @@ def edit_itinerary(payload: ChatEditRequest):
             "warning": str(e),
             "itinerary": fallback
         }
+
+
+@app.post("/api/adventure/plan")
+def generate_adventure_plan(payload: AdventureTrailRequest):
+    data = payload.model_dump()
+    pricing = calculate_adventure_price(data)
+
+    try:
+        itinerary = call_openai_json(build_adventure_prompt(data, pricing))
+        source = "openai"
+    except Exception as exc:
+        logger.warning(
+            "Adventure planner AI failed, using fallback: %s: %s",
+            type(exc).__name__,
+            str(exc)
+        )
+        itinerary = fallback_adventure_itinerary(data, pricing)
+        source = "fallback"
+
+    itinerary["pricing"] = pricing
+    route_map = build_adventure_route_map(data, itinerary)
+    gallery = build_adventure_gallery(data)
+    save_adventure_plan_mongo(data, itinerary, pricing, source)
+
+    return {
+        "ok": True,
+        "source": source,
+        "itinerary": itinerary,
+        "pricing": pricing,
+        "routeMap": route_map,
+        "gallery": gallery,
+        "endDate": add_days_iso(safe_str(data.get("startDate")), max(0, safe_int(data.get("days"), 2) - 1)),
+    }
+
+
+@app.post("/api/adventure/enquiry")
+def save_adventure_enquiry(payload: AdventureEnquiryRequest):
+    record = {
+        "createdAt": utc_now_iso(),
+        "customer": payload.customer or {},
+        "itinerary": payload.itinerary or {},
+        "pricing": payload.pricing or {},
+        "routeMap": payload.routeMap or build_adventure_route_map(payload.customer or {}, payload.itinerary or {}),
+        "paymentStatus": safe_str(payload.paymentStatus, "pending"),
+        "payment": payload.payment or {},
+        "planSource": safe_str(payload.planSource),
+    }
+    google_sheet = upsert_adventure_enquiry_to_sheet(record)
+    upsert_adventure_payment_mongo(record)
+
+    return {
+        "ok": True,
+        "message": "Adventure enquiry saved successfully",
+        "paymentStatus": record["paymentStatus"],
+        "googleSheet": google_sheet,
+    }
+
+
+@app.post("/api/adventure/payment/create-order")
+def create_adventure_payment_order(payload: AdventureRazorpayOrderRequest):
+    if not rz_client:
+        raise HTTPException(status_code=500, detail="Razorpay is not configured on server")
+
+    amount_rupees = float(payload.amount)
+    amount_paise = int(round(amount_rupees * 100))
+    receipt = safe_str(payload.receipt) or f"adventure_{clean_phone(payload.phone)}_{int(datetime.utcnow().timestamp())}"
+    notes = {
+        "module": "adventure_trails",
+        "customer_name": payload.name,
+        "customer_email": payload.email,
+        "customer_phone": payload.phone,
+        "plan_title": payload.planTitle,
+        "trail_type": payload.trailType,
+        "destination": payload.destination,
+        "start_date": payload.startDate,
+        "days": safe_str(payload.days),
+        "travellers": safe_str(payload.travellers),
+        "final_price": safe_str(payload.finalPrice),
+        "advance_amount": safe_str(payload.advanceAmount),
+        "balance_amount": safe_str(payload.balanceAmount),
+    }
+
+    try:
+        order = rz_client.order.create({
+            "amount": amount_paise,
+            "currency": payload.currency,
+            "receipt": receipt[:40],
+            "payment_capture": 1,
+            "notes": notes
+        })
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to create adventure Razorpay order right now")
+
+    upsert_adventure_payment_mongo({
+        "customer": {
+            "name": payload.name,
+            "phone": payload.phone,
+            "email": payload.email,
+            "destination": payload.destination,
+            "trailType": payload.trailType,
+            "startDate": payload.startDate,
+            "days": payload.days,
+            "travellers": payload.travellers,
+        },
+        "pricing": {
+            "finalPrice": payload.finalPrice,
+            "advanceAmount": payload.advanceAmount,
+            "balanceAmount": payload.balanceAmount,
+        },
+        "paymentStatus": "order_created",
+        "payment": {
+            "razorpayOrderId": safe_str(order.get("id")),
+            "amount": amount_rupees,
+            "currency": payload.currency,
+            "receipt": receipt[:40],
+        }
+    })
+
+    return {
+        "ok": True,
+        "key": RAZORPAY_KEY_ID,
+        "razorpay_key_id": RAZORPAY_KEY_ID,
+        "order": order,
+        "order_id": order.get("id"),
+        "amount": amount_rupees,
+        "currency": payload.currency,
+    }
+
+
+@app.post("/api/adventure/payment/verify")
+def verify_adventure_payment(payload: RazorpayVerifyRequest):
+    is_valid = verify_razorpay_signature(
+        order_id=payload.razorpay_order_id,
+        payment_id=payload.razorpay_payment_id,
+        signature=payload.razorpay_signature
+    )
+
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid Razorpay signature")
+
+    upsert_adventure_payment_mongo({
+        "customer": {},
+        "pricing": {},
+        "paymentStatus": "advance_paid",
+        "payment": {
+            "razorpayOrderId": payload.razorpay_order_id,
+            "razorpayPaymentId": payload.razorpay_payment_id,
+            "razorpaySignature": payload.razorpay_signature,
+            "verified": True,
+        }
+    })
+
+    return {
+        "ok": True,
+        "verified": True,
+        "source": "adventure_payment_verify",
+        "message": "Adventure payment verified successfully"
+    }
 
 
 @app.post("/api/contact")
